@@ -131,17 +131,17 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 ## 11. Development Phases
 
 ### Phase 1 — Project Foundation
-- [ ] Docker environment
-- [ ] Laravel application
-- [ ] Vue 3 frontend
-- [ ] Vite
-- [ ] MySQL
-- [ ] Redis
-- [ ] WebSocket infrastructure (Reverb)
-- [ ] Environment configuration
-- [ ] Health check endpoint
-- [ ] Basic frontend layout
-- [ ] Basic backend API structure
+- [x] Docker environment — DONE (all 6 services build and reach `Up`/`healthy`: app, nginx, mysql, redis, reverb, vite)
+- [x] Laravel application — DONE (Laravel 13 / PHP 8.4, boots and serves requests through nginx)
+- [x] Vue 3 frontend — DONE (`resources/js/App.vue` mounts at `#app`, verified rendering in a real browser)
+- [x] Vite — DONE (dev server serves TS/Vue with HMR on the mapped `VITE_PORT`)
+- [x] MySQL — DONE (migrations run against it; `migrate:status` confirms)
+- [x] Redis — DONE (read/write round-trip verified via `artisan tinker`)
+- [x] WebSocket infrastructure (Reverb) — DONE (`reverb:start` process stable, port accepts connections; full signaling exchange not yet exercised — that's Phase 5)
+- [x] Environment configuration — DONE (`.env.example` documents all vars incl. Docker host ports, DB, Redis, Reverb, Sanctum, TURN placeholders)
+- [x] Health check endpoint — DONE (`GET /api/v1/health` returns `{"status":"ok"}`, covered by `tests/Feature/HealthCheckTest.php`)
+- [x] Basic frontend layout — DONE (header + status page, confirmed via screenshot)
+- [x] Basic backend API structure — DONE (`/api/v1` prefix established in `routes/api.php`, Sanctum wired for future auth)
 
 ### Phase 2 — Authentication
 - [ ] Registration, login, logout
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) underway. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

@@ -59,13 +59,17 @@ This table is updated as each phase is manually verified; entries move from PEND
 
 ## Phase 1 Verification Checklist (Docker Foundation)
 
+Verified 2026-09-01, mcsirshad95@gmail.com.
+
 | ID | Test | Expected | Status |
 |----|------|----------|--------|
-| TC-P1-01 | `docker compose up -d` | All containers start | PENDING |
-| TC-P1-02 | Container health | app, nginx, mysql, redis, reverb, vite all healthy/running | PENDING |
-| TC-P1-03 | Laravel loads | `/` returns 200 | PENDING |
-| TC-P1-04 | DB connectivity | `php artisan migrate` succeeds | PENDING |
-| TC-P1-05 | Redis connectivity | App can read/write a Redis key | PENDING |
-| TC-P1-06 | WebSocket server | Reverb process starts and listens | PENDING |
-| TC-P1-07 | Health endpoint | `/api/v1/health` returns `{"status":"ok"}` | PENDING |
-| TC-P1-08 | Vue loads | SPA root mounts in browser/curl of built asset | PENDING |
+| TC-P1-01 | `docker compose up -d` | All containers start | PASS |
+| TC-P1-02 | Container health | app, nginx, mysql, redis, reverb, vite all healthy/running | PASS |
+| TC-P1-03 | Laravel loads | `/` returns 200 | PASS |
+| TC-P1-04 | DB connectivity | `php artisan migrate` succeeds | PASS (against MySQL, `migrate:status` confirms 4 migrations ran) |
+| TC-P1-05 | Redis connectivity | App can read/write a Redis key | PASS (via `artisan tinker`) |
+| TC-P1-06 | WebSocket server | Reverb process starts and listens | PASS (process stable, port 8080/8301 accepts TCP connections; full signaling round-trip deferred to Phase 5) |
+| TC-P1-07 | Health endpoint | `/api/v1/health` returns `{"status":"ok"}` | PASS (also covered by automated `tests/Feature/HealthCheckTest.php`) |
+| TC-P1-08 | Vue loads | SPA root mounts in browser/curl of built asset | PASS (confirmed via headless-Chrome screenshot showing "API status: ok") |
+
+Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-001 through BUG-004).
