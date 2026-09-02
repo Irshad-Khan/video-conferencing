@@ -146,3 +146,27 @@ Verified 2026-09-02, mcsirshad95@gmail.com.
 | TC-P5-09 | Code style | `./vendor/bin/pint --test` | PASS (61 files, no issues) |
 
 BUG-008 was found and fixed during this pass — see [BUGS.md](BUGS.md).
+
+## Phase 6 Verification Checklist (Multi-Participant Video)
+
+Verified 2026-09-02, mcsirshad95@gmail.com. No application code changes were required for this phase — Phase 5's signaling protocol (§ [WEBRTC.md](WEBRTC.md#signaling-sequence-per-new-peer-pair)) is symmetric and participant-count-agnostic by design (every existing peer independently offers to every newcomer's `participant.announce`), so it was verified to already form a correct full mesh at every tested size rather than needing new mesh-formation logic.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P6-01 | Full mesh at 2 participants | 1 host + 1 guest; all `RTCPeerConnection`s reach `connected` (1 pair); each side sees the other's live video tile | PASS (settled 14.4s) |
+| TC-P6-02 | Full mesh at 3 participants | 1 host + 2 guests; all 3 pairs connect; each of the 3 clients sees the other 2 live tiles | PASS (settled 19.8s) |
+| TC-P6-03 | Full mesh at 4 participants | 1 host + 3 guests; all 6 pairs connect | PASS (settled 25.0s) |
+| TC-P6-04 | Full mesh at 5 participants | 1 host + 4 guests; all 10 pairs connect | PASS (settled 30.3s) |
+| TC-P6-05 | Full mesh at 6 participants | 1 host + 5 guests; all 15 pairs connect | PASS (settled 35.6s) |
+| TC-P6-06 | Responsive tile grid | Grid column count adapts to participant count (1/2/3-per-row as the roster grows) with no overlapping or clipped tiles | PASS (visually confirmed via screenshot at 6 participants: 3×2 grid) |
+| TC-P6-07 | Per-tile name/mic/camera/connection indicators at scale | Each tile shows the correct participant name, `· muted`/`· camera off` when applicable, and connection state, independent of roster size | PASS (spot-checked at 6 participants: one guest muted, one guest camera-off, both indicators rendered correctly on every other peer's view of that tile) |
+| TC-P6-08 | Zero JS errors at every tested size | No uncaught errors/unhandled rejections on any client, 2 through 6 participants | PASS |
+
+Driven via one authenticated host (headless Chrome, port 9333, `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`) plus up to 5 guests as independent browser tabs on a second headless Chrome profile (port 9334) — guests need no login, and each CDP-opened tab gets its own `sessionStorage`, so multiple simultaneous guests don't require one OS process per guest the way two authenticated identities would.
+
+**Performance notes** (informational, not pass/fail — see [ROADMAP.md](ROADMAP.md)'s SFU migration trigger in §5):
+- Mesh size grows O(n²) in `RTCPeerConnection` pairs as expected: 1, 3, 6, 10, 15 pairs at n=2..6.
+- "Settle time" above is wall-clock from the first participant's registration through full-mesh `connected` state across all clients in the test harness (includes account/meeting setup, not just ICE negotiation) — it is a test-harness timing, not a user-perceived join latency measurement, and grows roughly linearly with n in this harness because guests join sequentially with a fixed stagger rather than simultaneously.
+- All tests used fake/synthetic media (no real bandwidth/CPU pressure from actual camera encoding), so these results confirm mesh *correctness* at 2–6 participants, not real-world bandwidth/CPU headroom — real hardware testing is recommended before assuming 6-participant calls are comfortable in production.
+
+No bugs were found during this pass.

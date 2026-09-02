@@ -179,10 +179,10 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Manual test: 2-browser call works end-to-end — DONE (two independent headless Chrome profiles with fake media devices, driven over CDP — host+participant and host+guest both verified; see TESTING.md's Phase 5 checklist)
 
 ### Phase 6 — Multi-Participant Video
-- [ ] P2P mesh for 2–6 participants
-- [ ] Video tile grid (responsive: 1/2/2x2/grid)
-- [ ] Per-tile name, mic/camera/connection status
-- [ ] Manual test at 2, 3, 4, 5, 6 participants + documented performance notes
+- [x] P2P mesh for 2–6 participants — DONE (no code change needed: Phase 5's `participant.announce`-driven offer/answer signaling in `Room.vue` is symmetric and participant-count-agnostic; verified to form a correct full O(n²) mesh at every tested size — see [TESTING.md](TESTING.md#phase-6-verification-checklist-multi-participant-video))
+- [x] Video tile grid (responsive: 1/2/2x2/grid) — DONE (`Room.vue`'s `sqrt`-based `gridTemplateColumns` already adapts column count to roster size; visually confirmed at 6 participants, 3×2 layout)
+- [x] Per-tile name, mic/camera/connection status — DONE (unchanged from Phase 5; confirmed correct at scale — mute/camera-off indicators verified on multiple simultaneous peers)
+- [x] Manual test at 2, 3, 4, 5, 6 participants + documented performance notes — DONE (all 5 sizes reach full mesh with zero JS errors; settle times and O(n²) connection-count notes in [TESTING.md](TESTING.md#phase-6-verification-checklist-multi-participant-video))
 
 ### Phase 7 — Meeting Controls
 - [ ] Participant: mute, camera off, leave
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

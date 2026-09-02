@@ -2,7 +2,9 @@
 
 ## Model: P2P Mesh (MVP)
 
-Every participant establishes a direct `RTCPeerConnection` to every other participant. For `n` participants there are `n(n-1)/2` peer connections total, and each client sends its own upload `n-1` times — bandwidth and CPU cost grow O(n²) per client. This is why the MVP target is **2–6 participants** (documented and tested in Phase 6, §11 of [ROADMAP.md](ROADMAP.md)).
+Every participant establishes a direct `RTCPeerConnection` to every other participant. For `n` participants there are `n(n-1)/2` peer connections total, and each client sends its own upload `n-1` times — bandwidth and CPU cost grow O(n²) per client. This is why the MVP target is **2–6 participants** (verified at every size 2 through 6 in Phase 6, §11 of [ROADMAP.md](ROADMAP.md); results in [TESTING.md](TESTING.md#phase-6-verification-checklist-multi-participant-video)).
+
+The signaling sequence below (§ "Signaling Sequence") requires no participant-count-specific logic: every existing peer independently reacts to a newcomer's `participant.announce`, so it forms a correct full mesh at any `n` without change — confirmed, not just assumed, by Phase 6's 2/3/4/5/6-participant test runs.
 
 ```
 User A
@@ -65,7 +67,7 @@ Guests never get a Sanctum session, so they can't rely on the cookie-based `$req
 
 ## When an SFU Becomes Necessary
 
-Migrate off P2P mesh to a Selective Forwarding Unit when manual/load testing (Phase 6) shows:
+Phase 6's testing (fake-media, 2–6 participants) found no correctness issues and no trigger condition met at 6 participants — but it did not measure real CPU/bandwidth headroom (see the performance notes in [TESTING.md](TESTING.md#phase-6-verification-checklist-multi-participant-video)). Migrate off P2P mesh to a Selective Forwarding Unit when manual/load testing with real media shows:
 - CPU usage on client devices becomes unacceptable above ~6 participants, or
 - Upload bandwidth requirements (n−1 outbound streams per client) exceed typical residential/mobile uplink capacity, or
 - Product requirements call for >6-participant meetings as a supported target.
@@ -74,5 +76,5 @@ Candidates evaluated (not implemented in MVP): **mediasoup** (Node-based SFU, fi
 
 ## Known Constraints
 
-- No CI-automated WebRTC media tests — the manual multi-browser procedure in [TESTING.md](TESTING.md) is run by hand (via two headless Chrome instances with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`, driven over the Chrome DevTools Protocol) rather than wired into the automated test suite, since that setup is heavier than a `php artisan test` run and not worth the CI investment at MVP scale.
+- No CI-automated WebRTC media tests — the manual multi-browser procedure in [TESTING.md](TESTING.md) is run by hand (via headless Chrome instances with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`, driven over the Chrome DevTools Protocol) rather than wired into the automated test suite, since that setup is heavier than a `php artisan test` run and not worth the CI investment at MVP scale. Scaling past 2 participants only needs one Chrome process per *authenticated* identity (cookie-based sessions are shared across all tabs in a profile); guests are stateless (token lives in per-tab `sessionStorage`, not cookies), so many simultaneous guests can share one headless Chrome profile as separate tabs — used to reach 6 participants in Phase 6 with only 2 Chrome processes.
 - Recording is out of scope until Phase 14 is explicitly scheduled (see ROADMAP.md §Phase 14 for the browser-vs-server-side recording tradeoff).
