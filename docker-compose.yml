@@ -11,8 +11,6 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./:/var/www/html
-    environment:
-      - APP_ENV=${APP_ENV:-local}
     depends_on:
       mysql:
         condition: service_healthy

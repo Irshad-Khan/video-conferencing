@@ -144,13 +144,13 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Basic backend API structure — DONE (`/api/v1` prefix established in `routes/api.php`, Sanctum wired for future auth)
 
 ### Phase 2 — Authentication
-- [ ] Registration, login, logout
-- [ ] Password hashing, validation
-- [ ] Sanctum session/token auth
-- [ ] Auth middleware
-- [ ] User profile
-- [ ] Frontend: login, register, dashboard, logout, profile pages
-- [ ] Tests: registration, login, security (unauthenticated/expired/unauthorized access)
+- [x] Registration, login, logout — DONE (`/api/v1/auth/register`, `/auth/login`, `/auth/logout`; see [API.md](API.md))
+- [x] Password hashing, validation — DONE (bcrypt via `Hash::make`, `Password::defaults()` rule, password confirmation)
+- [x] Sanctum session/token auth — DONE (SPA cookie-session via `statefulApi()` + `EnsureFrontendRequestsAreStateful`; token auth path kept open for future mobile clients)
+- [x] Auth middleware — DONE (`auth:sanctum` on `/auth/logout` and `/profile`; login rate-limited 5/email+IP with exponential lockout)
+- [x] User profile — DONE (`GET`/`PUT /api/v1/profile`, password change requires `current_password`)
+- [x] Frontend: login, register, dashboard, logout, profile pages — DONE (Vue Router with `requiresAuth`/`guestOnly` route guards; verified end-to-end in a real headless-Chrome session)
+- [x] Tests: registration, login, security (unauthenticated/expired/unauthorized access) — DONE (21 automated Feature tests: registration, login incl. rate limiting, logout, profile view/update/authorization boundaries — see [TESTING.md](TESTING.md))
 
 ### Phase 3 — Meeting Management
 - [ ] `meetings` table + model
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

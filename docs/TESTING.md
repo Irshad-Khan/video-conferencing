@@ -73,3 +73,20 @@ Verified 2026-09-01, mcsirshad95@gmail.com.
 | TC-P1-08 | Vue loads | SPA root mounts in browser/curl of built asset | PASS (confirmed via headless-Chrome screenshot showing "API status: ok") |
 
 Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-001 through BUG-004).
+
+## Phase 2 Verification Checklist (Authentication)
+
+Verified 2026-09-02, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P2-01 | Automated suite | `php artisan test` passes | PASS (21/21 tests, 72 assertions — `tests/Feature/Auth/{Registration,Login,Logout,Profile}Test.php`) |
+| TC-P2-02 | Registration validation | Duplicate email, mismatched confirmation, missing fields all rejected with 422 | PASS |
+| TC-P2-03 | Login security | Wrong password / unknown email rejected (422, generic message, no user enumeration); 5 failed attempts trigger lockout | PASS |
+| TC-P2-04 | Logout | Session invalidated, `web` guard no longer authenticated | PASS |
+| TC-P2-05 | Profile authorization | Guest gets 401 on `GET`/`PUT /profile`; a user can never see/edit another user's profile | PASS |
+| TC-P2-06 | Password change | Requires correct `current_password`; wrong current password rejected, hash actually changes in DB | PASS |
+| TC-P2-07 | Frontend flow (real browser) | Register → dashboard; logout → login; visiting `/dashboard` logged out → redirected to `/login`; login → dashboard; profile update persists and reflects on dashboard; visiting `/login` while authenticated → redirected to `/dashboard` | PASS (driven via Chrome DevTools Protocol against the live Docker stack at localhost:8300 — see BUG-005/BUG-006 for infra issues found and fixed along the way) |
+| TC-P2-08 | Code style | `./vendor/bin/pint --test` | PASS (42 files, no issues) |
+
+Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-005, BUG-006).

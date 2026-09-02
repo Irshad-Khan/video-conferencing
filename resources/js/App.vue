@@ -1,39 +1,32 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import axios from 'axios';
+import { useRouter } from 'vue-router';
+import { useAuth } from './stores/auth';
 
-const apiStatus = ref<'checking' | 'ok' | 'error'>('checking');
+const { state, logout } = useAuth();
+const router = useRouter();
 
-onMounted(async () => {
-    try {
-        const { data } = await axios.get('/api/v1/health');
-        apiStatus.value = data.status === 'ok' ? 'ok' : 'error';
-    } catch {
-        apiStatus.value = 'error';
-    }
-});
+async function onLogout(): Promise<void> {
+    await logout();
+    await router.push('/login');
+}
 </script>
 
 <template>
     <div class="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
-        <header class="border-b border-neutral-800 px-6 py-4">
-            <h1 class="text-lg font-semibold">Video Meeting App</h1>
+        <header class="border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
+            <router-link to="/" class="text-lg font-semibold">Video Meeting App</router-link>
+
+            <nav v-if="state.user" class="flex items-center gap-4 text-sm">
+                <router-link to="/dashboard" class="text-neutral-300 hover:text-neutral-100">Dashboard</router-link>
+                <router-link to="/profile" class="text-neutral-300 hover:text-neutral-100">Profile</router-link>
+                <button type="button" class="text-neutral-300 hover:text-neutral-100" @click="onLogout">
+                    Log out
+                </button>
+            </nav>
         </header>
 
-        <main class="flex-1 flex items-center justify-center px-6">
-            <div class="text-center space-y-2">
-                <p class="text-neutral-400">Self-hosted video meeting platform — foundation running.</p>
-                <p class="text-sm">
-                    API status:
-                    <span
-                        :class="{
-                            'text-yellow-400': apiStatus === 'checking',
-                            'text-green-400': apiStatus === 'ok',
-                            'text-red-400': apiStatus === 'error',
-                        }"
-                    >{{ apiStatus }}</span>
-                </p>
-            </div>
+        <main class="flex-1">
+            <router-view />
         </main>
     </div>
 </template>
