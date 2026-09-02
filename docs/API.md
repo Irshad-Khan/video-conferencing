@@ -39,6 +39,53 @@ Requires `auth:sanctum`. Updates name/email, and optionally password (requires `
 Request: `{"name", "email", "current_password"?, "password"?, "password_confirmation"?}`
 Response: `200 {"data": {...user}}`.
 
+## Meetings
+
+All endpoints below require `auth:sanctum` and only ever operate on meetings hosted by the authenticated user (enforced by `MeetingPolicy`; a non-host gets `403`). Meetings are addressed by `meeting_uuid` in the URL, not the numeric id. A meeting's `password` is never returned — responses instead include a `has_password` boolean.
+
+### `GET /api/v1/meetings`
+
+Lists every meeting hosted by the authenticated user (all statuses), newest-scheduled-first.
+Response: `200 {"data": [{...meeting}]}`.
+
+### `POST /api/v1/meetings`
+
+Creates a meeting. `meeting_uuid` and a unique `meeting_code` (e.g. `ABC-123-XYZ`) are generated server-side; the meeting starts in `scheduled` status.
+
+Request: `{"title", "description"?, "password"?, "scheduled_at"?, "waiting_room_enabled"?, "allow_guests"?}` (`scheduled_at` omitted = instant meeting, started on demand via `/start`).
+Response: `201 {"data": {...meeting}}`.
+
+### `GET /api/v1/meetings/{meeting}`
+
+Response: `200 {"data": {...meeting}}`, or `403` if the authenticated user isn't the host.
+
+### `PUT /api/v1/meetings/{meeting}`
+
+Edits a meeting. Only allowed while `status = scheduled`.
+
+Request: same shape as create (all fields optional/`sometimes`).
+Response: `200 {"data": {...meeting}}`, or `409` if the meeting isn't `scheduled`.
+
+### `DELETE /api/v1/meetings/{meeting}`
+
+Permanently deletes a meeting. Not allowed while `status = live` (end it first).
+Response: `204 No Content`, or `409` if the meeting is live.
+
+### `POST /api/v1/meetings/{meeting}/start`
+
+Transitions `scheduled` → `live`, sets `started_at`.
+Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
+
+### `POST /api/v1/meetings/{meeting}/end`
+
+Transitions `live` → `ended`, sets `ended_at`.
+Response: `200 {"data": {...meeting}}`, or `409` if not currently `live`.
+
+### `POST /api/v1/meetings/{meeting}/cancel`
+
+Transitions `scheduled` → `cancelled`.
+Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
+
 ## Misc
 
 ### `GET /api/v1/health`
@@ -47,4 +94,4 @@ Public. `200 {"status": "ok"}`. Used for container/infra health checks (see [DEP
 
 ---
 
-Meeting management, join flow, chat, and admin endpoints are documented here as they're implemented in later phases (see [ROADMAP.md](ROADMAP.md) §11).
+Join flow, chat, and admin endpoints are documented here as they're implemented in later phases (see [ROADMAP.md](ROADMAP.md) §11).

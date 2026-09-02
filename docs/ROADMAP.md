@@ -153,14 +153,14 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Tests: registration, login, security (unauthenticated/expired/unauthorized access) — DONE (21 automated Feature tests: registration, login incl. rate limiting, logout, profile view/update/authorization boundaries — see [TESTING.md](TESTING.md))
 
 ### Phase 3 — Meeting Management
-- [ ] `meetings` table + model
-- [ ] Create/edit/delete/cancel meeting
-- [ ] Unique meeting code generation
-- [ ] Optional meeting password
-- [ ] Scheduling fields
-- [ ] Start/end meeting lifecycle
-- [ ] Dashboard: My/Upcoming/Live/Past meetings
-- [ ] Tests: create, duplicate code prevention, unauthorized edit/delete, host permissions, lifecycle
+- [x] `meetings` table + model — DONE (`Meeting` model with `host()` relation, attribute-based fillable/hidden/route-key/policy config)
+- [x] Create/edit/delete/cancel meeting — DONE (`/api/v1/meetings` CRUD + `/cancel`; edit/delete guarded by meeting status, see [API.md](API.md))
+- [x] Unique meeting code generation — DONE (`Meeting::generateUniqueCode()`, retry-on-collision, verified under a forced collision)
+- [x] Optional meeting password — DONE (bcrypt via the same `hashed` cast used on `User::password`; never returned, `has_password` exposed instead)
+- [x] Scheduling fields — DONE (`scheduled_at`; omitted = instant meeting)
+- [x] Start/end meeting lifecycle — DONE (`/start`, `/end`; invalid transitions rejected with 409)
+- [x] Dashboard: My/Upcoming/Live/Past meetings — DONE (`Dashboard.vue` groups the host's meetings into Live/Upcoming/Past sections; verified end-to-end in a real headless-Chrome session)
+- [x] Tests: create, duplicate code prevention, unauthorized edit/delete, host permissions, lifecycle — DONE (23 automated Feature tests across `tests/Feature/Meetings/{MeetingCreation,MeetingAuthorization,MeetingLifecycle,MeetingList}Test.php`)
 
 ### Phase 4 — Join Meeting
 - [ ] Public join URL (`/meeting/{code}`)
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

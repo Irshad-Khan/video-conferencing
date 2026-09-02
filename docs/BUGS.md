@@ -176,3 +176,29 @@ No application code change (the logout implementation is correct). Updated the t
 
 Test:
 `php artisan test --filter=LogoutTest` passes.
+
+---
+
+## BUG-007
+
+Status: DONE
+
+Description:
+`Meeting::start()`/`cancel()`/`end()` (in `MeetingController`) returned `200 OK` with the *unchanged* meeting — `status`, `started_at`, and `ended_at` never actually updated in the database. No exception was thrown, so this silently passed casual testing of the happy path and was only caught by the Feature tests that asserted the returned/persisted status.
+
+Steps:
+1. `Meeting`'s `#[Fillable(...)]` attribute lists only the fields a host is allowed to set from a form (`title`, `description`, `password`, `scheduled_at`, `waiting_room_enabled`, `allow_guests`) — deliberately excluding `status`/`started_at`/`ended_at`, which are internal lifecycle state, not user input.
+2. `MeetingController::start()` (and `cancel()`/`end()`) called `$meeting->update(['status' => ..., 'started_at' => ...])` — `update()` is a mass-assignment call, so Eloquent silently discarded the non-fillable keys instead of throwing, because the app doesn't call `Model::shouldBeStrict()`.
+3. `postJson('/meetings/{uuid}/start')` returned `200` with the stale `status`.
+
+Expected:
+The lifecycle action persists the new `status`/`started_at`/`ended_at` and returns them in the response.
+
+Actual:
+The meeting's `status` silently remained `scheduled` (or `live`, for `end()`) after a "successful" `200` response.
+
+Fix:
+Changed the three lifecycle actions in `MeetingController` to use `$meeting->forceFill([...])->save()` instead of `update()` — `forceFill()` intentionally bypasses the mass-assignment guard, which is correct here because these are internal state transitions driven by controller logic (already authorized via `Gate::authorize('manageLifecycle', ...)`), not raw user-supplied field lists. Any future phase that mutates a non-fillable column from a controller (e.g. Phase 7's host controls, Phase 4's `meeting_participants.status`) should use the same pattern rather than widening `#[Fillable]`.
+
+Test:
+`tests/Feature/Meetings/MeetingLifecycleTest.php` — `test_the_host_can_start_a_scheduled_meeting`, `test_the_host_can_end_a_live_meeting`, `test_the_host_can_cancel_a_scheduled_meeting` all assert the persisted status/timestamp changed; all pass.

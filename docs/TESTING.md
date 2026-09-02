@@ -90,3 +90,22 @@ Verified 2026-09-02, mcsirshad95@gmail.com.
 | TC-P2-08 | Code style | `./vendor/bin/pint --test` | PASS (42 files, no issues) |
 
 Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-005, BUG-006).
+
+## Phase 3 Verification Checklist (Meeting Management)
+
+Verified 2026-09-02, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P3-01 | Automated suite | `php artisan test` passes | PASS (44/44 tests, 134 assertions — full suite incl. `tests/Feature/Meetings/*`) |
+| TC-P3-02 | Create meeting | Host creates a meeting; `meeting_uuid`/`meeting_code` generated, status `scheduled`, guest gets 401, missing title gets 422 | PASS |
+| TC-P3-03 | Meeting code uniqueness | Retry loop in `Meeting::generateUniqueCode()` re-rolls on a forced collision instead of violating the unique constraint | PASS (`Str::createRandomStringsUsingSequence()` forces a collision, asserts the retried code is used) |
+| TC-P3-04 | Meeting password | Optional password is bcrypt-hashed, never returned raw; `has_password` reflects presence | PASS |
+| TC-P3-05 | Authorization | Guest gets 401 on every meeting route; a non-host gets 403 on view/update/delete/cancel/start/end of another host's meeting; the host succeeds on all of them | PASS |
+| TC-P3-06 | Lifecycle | `scheduled → live` (`/start`), `live → ended` (`/end`), `scheduled → cancelled` (`/cancel`) all persist correctly; invalid transitions (starting a live meeting, ending a scheduled one, cancelling a live one) rejected with 409 | PASS |
+| TC-P3-07 | Edit/delete guardrails | Editing blocked once a meeting is no longer `scheduled` (409); deleting blocked while `live` (409); an `ended` meeting can be deleted | PASS |
+| TC-P3-08 | Dashboard listing | `GET /meetings` returns only the authenticated user's own meetings, across every status | PASS |
+| TC-P3-09 | Frontend flow (real browser) | Create an instant meeting and a scheduled+password-protected meeting from the Dashboard; start → appears under Live; end → moves to Past as `ended`; edit a scheduled meeting's title; cancel it → shows `cancelled` in Past; delete a past meeting; reload confirms persistence | PASS (driven via Chrome DevTools Protocol against the live Docker stack at localhost:8300; see BUG-007 for an implementation bug found and fixed along the way) |
+| TC-P3-10 | Code style | `./vendor/bin/pint --test` | PASS (53 files, no issues) |
+
+Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-007).
