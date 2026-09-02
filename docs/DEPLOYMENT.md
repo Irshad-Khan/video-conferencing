@@ -23,6 +23,7 @@ Same Docker Compose services, with these changes:
 - **coturn** deployed as a self-hosted TURN server (own container or host process) — required for reliable WebRTC connectivity across NATs/firewalls in real deployments. Minimum config: a realm, a shared static-auth secret (or long-term credentials tied to short-lived per-meeting turn credentials issued by the Laravel backend), UDP relay port range opened on the host/firewall, and TLS (`turns:`) for the TURN listener where possible.
 - MySQL and Redis on named, backed-up volumes (or managed equivalents if the host provides them).
 - Secrets (DB password, `APP_KEY`, Reverb app secret, coturn shared secret) supplied via environment, never committed.
+- `REVERB_SERVER_HOST`/`REVERB_SERVER_PORT` must resolve on the Docker-internal network (the `app`/`queue` containers publishing broadcast events, e.g. Phase 7's host-control actions) — keep them as `reverb`/`8080` even in production, distinct from the public `REVERB_HOST`/`REVERB_PORT` behind the TLS-terminating reverse proxy that `VITE_REVERB_*` points browsers at. See BUG-009 in [BUGS.md](BUGS.md).
 
 ## Scaling Notes
 

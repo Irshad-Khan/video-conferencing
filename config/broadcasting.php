@@ -36,8 +36,14 @@ return [
             'secret' => env('REVERB_APP_SECRET'),
             'app_id' => env('REVERB_APP_ID'),
             'options' => [
-                'host' => env('REVERB_HOST'),
-                'port' => env('REVERB_PORT', 443),
+                // Server-to-server publishing (the `app` container calling broadcast())
+                // needs Reverb's address on the Docker network, not the browser-facing
+                // host/port (REVERB_HOST/REVERB_PORT, used by VITE_REVERB_* for the
+                // client's WebSocket connection) — those are only reachable from the
+                // host machine. REVERB_SERVER_HOST/PORT default back to REVERB_HOST/PORT
+                // for single-host (non-Docker) deployments where they're the same.
+                'host' => env('REVERB_SERVER_HOST', env('REVERB_HOST')),
+                'port' => env('REVERB_SERVER_PORT', env('REVERB_PORT', 443)),
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],

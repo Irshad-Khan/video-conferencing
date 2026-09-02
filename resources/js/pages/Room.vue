@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { JoinMeetingResponse } from '../types';
+import type { HostControlPayload, JoinMeetingResponse } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +22,7 @@ type ConnectionState = 'connecting' | 'connected' | 'failed' | 'disconnected';
 interface PeerTile {
     id: string;
     name: string;
+    participantId: number | null;
     stream: MediaStream | null;
     state: ConnectionState;
     micOn: boolean;
@@ -29,15 +30,22 @@ interface PeerTile {
 }
 
 const error = ref('');
+const notice = ref('');
 const micOn = ref(true);
 const cameraOn = ref(true);
 const localVideo = ref<HTMLVideoElement | null>(null);
 const peers = reactive<Record<string, PeerTile>>({});
+const isHost = ref(false);
+const meetingLocked = ref(false);
+const guestsAllowed = ref(true);
+const hostActionError = ref('');
+const hostActionBusy = ref(false);
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
 let myId = '';
 let myName = 'Participant';
+let myParticipantId: number | null = null;
 let channel: EchoChannel | null = null;
 const connections: Record<string, RTCPeerConnection> = {};
 
@@ -52,10 +60,10 @@ function connectionUiState(state: RTCPeerConnectionState): ConnectionState {
     return 'connecting';
 }
 
-function ensurePeer(id: string, name: string): RTCPeerConnection {
+function ensurePeer(id: string, name: string, participantId: number | null = null): RTCPeerConnection {
     if (connections[id]) return connections[id];
 
-    peers[id] = peers[id] ?? { id, name, stream: null, state: 'connecting', micOn: true, cameraOn: true };
+    peers[id] = peers[id] ?? { id, name, participantId, stream: null, state: 'connecting', micOn: true, cameraOn: true };
 
     const pc = new RTCPeerConnection(iceConfig());
 
@@ -84,7 +92,7 @@ async function createOfferTo(id: string, name: string): Promise<void> {
     const pc = ensurePeer(id, name);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    channel?.whisper('webrtc-offer', { from: myId, target: id, name: myName, sdp: offer });
+    channel?.whisper('webrtc-offer', { from: myId, target: id, name: myName, participantId: myParticipantId, sdp: offer });
 }
 
 function teardownPeer(id: string): void {
@@ -97,17 +105,25 @@ function attachSignalingListeners(): void {
     if (!channel) return;
 
     channel
-        .listenForWhisper('participant.announce', (payload: { id: string; name: string }) => {
+        .listenForWhisper('participant.announce', (payload: { id: string; name: string; participantId?: number }) => {
             if (payload.id === myId || connections[payload.id]) return;
-            peers[payload.id] = { id: payload.id, name: payload.name, stream: null, state: 'connecting', micOn: true, cameraOn: true };
+            peers[payload.id] = {
+                id: payload.id,
+                name: payload.name,
+                participantId: payload.participantId ?? null,
+                stream: null,
+                state: 'connecting',
+                micOn: true,
+                cameraOn: true,
+            };
             void createOfferTo(payload.id, payload.name);
         })
         .listenForWhisper('participant.bye', (payload: { id: string }) => {
             teardownPeer(payload.id);
         })
-        .listenForWhisper('webrtc-offer', async (payload: { from: string; target: string; name?: string; sdp: RTCSessionDescriptionInit }) => {
+        .listenForWhisper('webrtc-offer', async (payload: { from: string; target: string; name?: string; participantId?: number; sdp: RTCSessionDescriptionInit }) => {
             if (payload.target !== myId) return;
-            const pc = ensurePeer(payload.from, peers[payload.from]?.name ?? payload.name ?? 'Participant');
+            const pc = ensurePeer(payload.from, peers[payload.from]?.name ?? payload.name ?? 'Participant', payload.participantId ?? null);
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -130,7 +146,53 @@ function attachSignalingListeners(): void {
                 peers[payload.from].micOn = payload.mic;
                 peers[payload.from].cameraOn = payload.camera;
             }
+        })
+        .listen('.host.control', (payload: HostControlPayload) => {
+            handleHostControl(payload);
         });
+}
+
+function handleHostControl(payload: HostControlPayload): void {
+    switch (payload.action) {
+        case 'mute':
+            if (payload.target === myId) {
+                micOn.value = false;
+                localStream?.getAudioTracks().forEach((track) => (track.enabled = false));
+                channel?.whisper('media-state', { from: myId, mic: false, camera: cameraOn.value });
+                notice.value = 'The host muted your microphone.';
+            }
+            break;
+        case 'remove':
+            if (payload.target === myId) {
+                notice.value = 'You were removed from this meeting by the host.';
+                teardown();
+                sessionStorage.removeItem(joinDataKey);
+                sessionStorage.removeItem(guestTokenKey);
+                router.push({ name: 'join', params: { code } });
+            } else if (payload.target) {
+                teardownPeer(payload.target);
+            }
+            break;
+        case 'end':
+            notice.value = 'This meeting was ended by the host.';
+            teardown();
+            sessionStorage.removeItem(joinDataKey);
+            sessionStorage.removeItem(guestTokenKey);
+            router.push({ name: 'join', params: { code } });
+            break;
+        case 'lock':
+            meetingLocked.value = true;
+            break;
+        case 'unlock':
+            meetingLocked.value = false;
+            break;
+        case 'guests-enabled':
+            guestsAllowed.value = true;
+            break;
+        case 'guests-disabled':
+            guestsAllowed.value = false;
+            break;
+    }
 }
 
 function teardown(): void {
@@ -156,6 +218,10 @@ onMounted(async () => {
     joinData = JSON.parse(raw) as JoinMeetingResponse;
     myId = joinData.presence_id;
     myName = joinData.participant.guest_name ?? state.user?.name ?? 'Participant';
+    myParticipantId = joinData.participant.id;
+    isHost.value = joinData.participant.role === 'host';
+    meetingLocked.value = joinData.meeting.is_locked;
+    guestsAllowed.value = joinData.meeting.allow_guests;
 
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
@@ -177,7 +243,7 @@ onMounted(async () => {
     attachSignalingListeners();
     channel
         .subscribed(() => {
-            channel?.whisper('participant.announce', { id: myId, name: myName });
+            channel?.whisper('participant.announce', { id: myId, name: myName, participantId: myParticipantId });
         })
         .error(() => {
             error.value = 'Could not connect to the meeting room. Please try again.';
@@ -215,6 +281,93 @@ async function leaveRoom(): Promise<void> {
     router.push({ name: 'join', params: { code } });
 }
 
+async function toggleLock(): Promise<void> {
+    if (!joinData || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    // Capture the target value before awaiting: the host's own client also
+    // receives its own 'lock'/'unlock' broadcast (often before this request
+    // resolves), so inverting the *current* ref afterwards could double-flip it.
+    const wasLocked = meetingLocked.value;
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/${wasLocked ? 'unlock' : 'lock'}`);
+        meetingLocked.value = !wasLocked;
+    } catch {
+        hostActionError.value = 'Could not update the lock. Please try again.';
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function toggleGuests(): Promise<void> {
+    if (!joinData || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    // See toggleLock() above for why this captures the target value up front
+    // instead of inverting the live ref after the request resolves.
+    const wereAllowed = guestsAllowed.value;
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/guests/${wereAllowed ? 'disable' : 'enable'}`);
+        guestsAllowed.value = !wereAllowed;
+    } catch {
+        hostActionError.value = 'Could not update guest access. Please try again.';
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function endMeetingForAll(): Promise<void> {
+    if (!joinData || hostActionBusy.value) return;
+    if (!confirm('End this meeting for everyone?')) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/end`);
+        teardown();
+        sessionStorage.removeItem(joinDataKey);
+        sessionStorage.removeItem(guestTokenKey);
+        router.push({ name: 'join', params: { code } });
+    } catch {
+        hostActionError.value = 'Could not end the meeting. Please try again.';
+        hostActionBusy.value = false;
+    }
+}
+
+async function muteParticipant(peer: PeerTile): Promise<void> {
+    if (!joinData || !peer.participantId || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${peer.participantId}/mute`);
+    } catch {
+        hostActionError.value = `Could not mute ${peer.name}. Please try again.`;
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function removeParticipant(peer: PeerTile): Promise<void> {
+    if (!joinData || !peer.participantId || hostActionBusy.value) return;
+    if (!confirm(`Remove ${peer.name} from this meeting?`)) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${peer.participantId}/remove`);
+        teardownPeer(peer.id);
+    } catch {
+        hostActionError.value = `Could not remove ${peer.name}. Please try again.`;
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
 function setPeerVideoEl(id: string, el: Element | null): void {
     const video = el as HTMLVideoElement | null;
     if (video && peers[id]?.stream) {
@@ -230,6 +383,38 @@ function setPeerVideoEl(id: string, el: Element | null): void {
         </div>
 
         <template v-else>
+            <p v-if="notice" class="text-xs text-center bg-amber-950/50 text-amber-300 py-1.5">{{ notice }}</p>
+            <p v-if="hostActionError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ hostActionError }}</p>
+
+            <div v-if="isHost" class="flex items-center justify-center gap-2 px-4 py-2 border-b border-neutral-800 text-xs">
+                <button
+                    type="button"
+                    :disabled="hostActionBusy"
+                    class="rounded-full px-3 py-1 border border-neutral-800 disabled:opacity-50"
+                    :class="meetingLocked ? 'bg-red-900/50 border-red-800' : 'bg-neutral-900'"
+                    @click="toggleLock"
+                >
+                    {{ meetingLocked ? 'Unlock meeting' : 'Lock meeting' }}
+                </button>
+                <button
+                    type="button"
+                    :disabled="hostActionBusy"
+                    class="rounded-full px-3 py-1 border border-neutral-800 disabled:opacity-50"
+                    :class="guestsAllowed ? 'bg-neutral-900' : 'bg-red-900/50 border-red-800'"
+                    @click="toggleGuests"
+                >
+                    {{ guestsAllowed ? 'Disallow guests' : 'Allow guests' }}
+                </button>
+                <button
+                    type="button"
+                    :disabled="hostActionBusy"
+                    class="rounded-full px-3 py-1 bg-red-700 disabled:opacity-50"
+                    @click="endMeetingForAll"
+                >
+                    End meeting for all
+                </button>
+            </div>
+
             <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
                 <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
                     <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
@@ -256,6 +441,24 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         <span v-if="!peer.micOn">· muted</span>
                         <span v-if="!peer.cameraOn">· camera off</span>
                         <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
+                    </div>
+                    <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
+                        <button
+                            type="button"
+                            :disabled="hostActionBusy"
+                            class="text-xs bg-black/60 hover:bg-black/80 rounded px-2 py-1 disabled:opacity-50"
+                            @click="muteParticipant(peer)"
+                        >
+                            Mute
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="hostActionBusy"
+                            class="text-xs bg-black/60 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                            @click="removeParticipant(peer)"
+                        >
+                            Remove
+                        </button>
                     </div>
                 </div>
             </div>

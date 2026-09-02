@@ -228,3 +228,54 @@ Changed `resources/js/pages/Room.vue` to set the header at `window.Echo.connecto
 
 Test:
 Caught by real-browser E2E (this bug is invisible to the PHPUnit broadcasting-auth tests, which hit `/broadcasting/auth` directly and never exercise the frontend's header-setting code) — driven via two independent headless Chrome profiles (`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`) over CDP: a host and a guest both reach `RTCPeerConnection` with live remote video tiles and zero JS errors after the fix (TC-P5-06 in TESTING.md).
+
+---
+
+## BUG-009
+
+Status: DONE
+
+Description:
+Every Phase 7 host-control action (`mute`/`remove`/`lock`/`unlock`/`end`/guest-toggle) called `broadcast(new HostControlEvent(...))` from the `app` container, but the request failed server-side with `Pusher error: cURL error 7: Failed to connect to localhost port 8301` and a `500` was masked as a `200` only because `broadcast()` (not `broadcast()->toOthers()->` with error propagation suppressed) actually let the `BroadcastException` bubble — in practice every host-control endpoint's *database* write still succeeded (visible via a direct `artisan tinker` query or a second `GET`), but nothing was pushed to connected clients in real time, so a muted/removed participant's browser never reacted. This had never surfaced before Phase 7 because Phase 5/6's signaling is 100% client-side Echo whispers — nothing in the app had ever called Laravel's `broadcast()` helper (which publishes over HTTP to Reverb's REST API) until this phase.
+
+Steps:
+1. `config/broadcasting.php`'s `reverb` connection `options.host`/`options.port` read `env('REVERB_HOST')` / `env('REVERB_PORT')`, i.e. `localhost:8301` — the address the *browser* uses to reach Reverb's port published on the host machine.
+2. From inside the `app` container, `localhost` resolves to the container itself, not the separate `meetapp_reverb` container — there is nothing listening on `localhost:8301` inside `app`.
+3. Trigger any host-control action (e.g. `POST /meetings/{uuid}/lock`) and tail `storage/logs/laravel.log`.
+
+Expected:
+The `app` container publishes the event to Reverb over the Docker-internal network (`reverb:8080`, the port `reverb:start --port=8080` actually binds inside its own container), and every subscribed client receives it within the same real-time push that Echo whispers already use.
+
+Actual:
+`local.ERROR: Pusher error: cURL error 7: Failed to connect to localhost port 8301 ... (see PusherBroadcaster.php:171)` on every host-control call; no client ever received the `.host.control` event, so force-mute/remove/end never took visible effect for anyone.
+
+Fix:
+Added `REVERB_SERVER_HOST=reverb` / `REVERB_SERVER_PORT=8080` (`.env`, `.env.example`) — the Docker-internal address, distinct from the browser-facing `REVERB_HOST`/`REVERB_PORT` used by `VITE_REVERB_*`. `config/broadcasting.php`'s reverb connection now resolves `host`/`port` from `REVERB_SERVER_HOST`/`REVERB_SERVER_PORT` with a fallback to `REVERB_HOST`/`REVERB_PORT` (so a non-Docker, single-host deployment where both addresses are identical needs no new vars).
+
+Test:
+Caught by real-browser E2E, not PHPUnit — the Feature tests use `Event::fake([HostControlEvent::class])`, which never touches the real broadcaster and so could not see this. Reproduced and verified via two headless Chrome profiles over CDP: before the fix, a host force-muting a guest left the guest's own mute button unchanged and no "muted your microphone" notice appeared; after the fix, the guest's button flips to "Unmute", the host's tile shows "· muted", and the notice text appears — same live-verification pattern confirmed for remove (guest is redirected out of the room, host's tile count drops) and end (both host and guest land back on the join screen with "This meeting has ended.").
+
+---
+
+## BUG-010
+
+Status: DONE
+
+Description:
+`Room.vue`'s `toggleLock()`/`toggleGuests()` set the new state by inverting the *current* ref after the `POST` request resolved (`meetingLocked.value = !meetingLocked.value`). The host's own client also receives its own `lock`/`unlock`/`guests-enabled`/`guests-disabled` broadcast via the same `.host.control` Echo listener used to react to other host actions — and that WebSocket push frequently arrives and updates the ref *before* the still-pending HTTP response resolves. When it did, the later `!meetingLocked.value` inverted the value a second time, silently reverting the host's own UI to the opposite of what had actually just been persisted (e.g. clicking "Lock meeting" left the button reading "Lock meeting" even though the meeting was, correctly, now locked in the database and rejecting new joins).
+
+Steps:
+1. As host, click "Lock meeting" — the meeting is genuinely locked (a fresh guest's join attempt is correctly rejected).
+2. Click "Unlock meeting" — with the timing-dependent double-flip, the button can still read "Lock meeting" (never having visually updated after step 1), and the click is a no-op because no button with that exact text exists.
+
+Expected:
+Clicking lock/unlock (or the guest-access toggle) always leaves the host's own button reflecting the value that was actually persisted, regardless of whether the self-broadcast echo or the HTTP response resolves first.
+
+Actual:
+Depending on which arrived first, the local flip could double-apply and desync the button label from the real `is_locked`/`allow_guests` value — confirmed via CDP: after locking, clicking the (still-labeled-incorrectly) "Unlock meeting" button found no matching element.
+
+Fix:
+`toggleLock()`/`toggleGuests()` now capture the intended target value (`wasLocked`/`wereAllowed`) *before* the `await`, and set the ref to that captured, request-scoped value afterwards instead of inverting whatever the ref happens to hold at that point — idempotent against the self-broadcast arriving first.
+
+Test:
+Caught and verified via real-browser E2E only (a timing race between a WebSocket push and a pending HTTP response isn't reachable through `Event::fake()`-based Feature tests, which never dispatch a real broadcast). Reproduced and confirmed fixed via CDP: lock → unlock → the "Unlock meeting" button is found and clicked successfully, and a fresh guest can join again afterward.

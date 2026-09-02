@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Api\V1\Auth\RegisteredUserController;
+use App\Http\Controllers\Api\V1\MeetingControlController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\MeetingJoinController;
 use App\Http\Controllers\Api\V1\ProfileController;
@@ -34,5 +35,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);
         Route::post('/meetings/{meeting}/start', [MeetingController::class, 'start']);
         Route::post('/meetings/{meeting}/end', [MeetingController::class, 'end']);
+        Route::post('/meetings/{meeting}/lock', [MeetingControlController::class, 'lock']);
+        Route::post('/meetings/{meeting}/unlock', [MeetingControlController::class, 'unlock']);
+        Route::post('/meetings/{meeting}/guests/enable', [MeetingControlController::class, 'enableGuests']);
+        Route::post('/meetings/{meeting}/guests/disable', [MeetingControlController::class, 'disableGuests']);
+        Route::post('/meetings/{meeting}/participants/{participant}/mute', [MeetingControlController::class, 'muteParticipant']);
+        Route::post('/meetings/{meeting}/participants/{participant}/remove', [MeetingControlController::class, 'removeParticipant']);
     });
 });

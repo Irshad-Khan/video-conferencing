@@ -28,6 +28,7 @@ class MeetingJoinController extends Controller
             'status' => $meeting->status,
             'has_password' => $meeting->has_password,
             'allow_guests' => $meeting->allow_guests,
+            'is_locked' => $meeting->is_locked,
         ]]);
     }
 
@@ -45,6 +46,10 @@ class MeetingJoinController extends Controller
 
         $user = $request->user();
         $isHost = $user && $user->id === $meeting->host_user_id;
+
+        if ($meeting->is_locked && ! $isHost) {
+            return response()->json(['message' => 'This meeting is locked.'], 403);
+        }
 
         if ($meeting->password && ! $isHost) {
             if (! $request->filled('password') || ! Hash::check($request->input('password'), $meeting->password)) {
@@ -107,7 +112,7 @@ class MeetingJoinController extends Controller
         return response()->json([
             'data' => [
                 'participant' => $participant,
-                'meeting' => $meeting->only(['meeting_uuid', 'meeting_code', 'title', 'status']),
+                'meeting' => $meeting->only(['meeting_uuid', 'meeting_code', 'title', 'status', 'is_locked', 'allow_guests']),
                 'guest_token' => $guestToken,
                 'presence_id' => $participant->presenceId(),
             ],

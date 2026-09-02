@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\HostControlEvent;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMeetingRequest;
 use App\Http\Requests\UpdateMeetingRequest;
@@ -113,6 +114,8 @@ class MeetingController extends Controller
             'status' => Meeting::STATUS_ENDED,
             'ended_at' => now(),
         ])->save();
+
+        broadcast(new HostControlEvent($meeting, 'end'));
 
         return response()->json(['data' => $meeting]);
     }

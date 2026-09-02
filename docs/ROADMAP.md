@@ -185,10 +185,10 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Manual test at 2, 3, 4, 5, 6 participants + documented performance notes — DONE (all 5 sizes reach full mesh with zero JS errors; settle times and O(n²) connection-count notes in [TESTING.md](TESTING.md#phase-6-verification-checklist-multi-participant-video))
 
 ### Phase 7 — Meeting Controls
-- [ ] Participant: mute, camera off, leave
-- [ ] Host: mute participant, remove participant, end meeting, lock meeting, allow/disallow guests
-- [ ] Server-side authorization for every host action
-- [ ] Tests: participant cannot call host endpoints, removed participant is disconnected, lock/end work
+- [x] Participant: mute, camera off, leave — DONE (unchanged from Phase 5: local `track.enabled` toggle + `media-state` whisper; `leave` posts `/leave` and tears down the peer)
+- [x] Host: mute participant, remove participant, end meeting, lock meeting, allow/disallow guests — DONE (new `App\Events\HostControlEvent`, broadcast on `meeting.{uuid}` as `.host.control`; `MeetingControlController` for lock/unlock/guests toggle/mute/remove; `MeetingController::end()` now also broadcasts. `Room.vue` reacts in real time: a force-muted participant's own mic is disabled and their button flips to "Unmute"; a removed participant is torn down and redirected immediately, and every peer's tile for them disappears without waiting for ICE/DTLS timeout; ending the meeting redirects every connected client. See [WEBRTC.md](WEBRTC.md#host-control-signaling) and [TESTING.md](TESTING.md#phase-7-verification-checklist-meeting-controls))
+- [x] Server-side authorization for every host action — DONE (`MeetingPolicy::manageSettings`/`manageParticipants`, same host-only pattern as `manageLifecycle`; every host-control route sits behind `auth:sanctum` + `Gate::authorize`)
+- [x] Tests: participant cannot call host endpoints, removed participant is disconnected, lock/end work — DONE (16 new Feature tests across `MeetingControlsTest.php`, `MeetingControlsAuthorizationTest.php`, plus one added to `MeetingBroadcastAuthTest.php`; "removed participant is disconnected" verified live over CDP, not just via the DB status flip, since that requires the real-time broadcast path)
 
 ### Phase 8 — Screen Sharing
 - [ ] `getDisplayMedia` start/stop
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

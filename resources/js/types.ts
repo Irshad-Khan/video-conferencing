@@ -48,6 +48,7 @@ export interface MeetingLookup {
     status: MeetingStatus;
     has_password: boolean;
     allow_guests: boolean;
+    is_locked: boolean;
 }
 
 export type ParticipantRole = 'host' | 'co_host' | 'participant' | 'guest';
@@ -66,7 +67,14 @@ export interface MeetingParticipant {
 
 export interface JoinMeetingResponse {
     participant: MeetingParticipant;
-    meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status'>;
+    meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status' | 'is_locked' | 'allow_guests'>;
     guest_token: string | null;
     presence_id: string;
+}
+
+export type HostControlAction = 'mute' | 'remove' | 'lock' | 'unlock' | 'end' | 'guests-enabled' | 'guests-disabled';
+
+export interface HostControlPayload {
+    action: HostControlAction;
+    target?: string;
 }

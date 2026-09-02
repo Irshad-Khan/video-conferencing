@@ -161,6 +161,23 @@ class MeetingBroadcastAuthTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_a_removed_participant_cannot_reauthorize_the_channel(): void
+    {
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->for($host, 'host')->create();
+        $participant = User::factory()->create();
+        MeetingParticipant::factory()->for($meeting)->for($participant, 'user')->create([
+            'status' => MeetingParticipant::STATUS_REMOVED,
+        ]);
+
+        $response = $this->actingAs($participant)->postJson('/broadcasting/auth', [
+            ...$this->authRequest(),
+            'channel_name' => "private-meeting.{$meeting->meeting_uuid}",
+        ]);
+
+        $response->assertStatus(403);
+    }
+
     public function test_an_unknown_meeting_uuid_cannot_be_authorized(): void
     {
         $host = User::factory()->create();

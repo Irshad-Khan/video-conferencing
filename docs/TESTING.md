@@ -170,3 +170,24 @@ Driven via one authenticated host (headless Chrome, port 9333, `--use-fake-devic
 - All tests used fake/synthetic media (no real bandwidth/CPU pressure from actual camera encoding), so these results confirm mesh *correctness* at 2–6 participants, not real-world bandwidth/CPU headroom — real hardware testing is recommended before assuming 6-participant calls are comfortable in production.
 
 No bugs were found during this pass.
+
+## Phase 7 Verification Checklist (Meeting Controls)
+
+Verified 2026-09-02, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P7-01 | Automated suite | `php artisan test` passes | PASS (86/86 tests, 242 assertions — adds `MeetingControlsTest.php`, `MeetingControlsAuthorizationTest.php`, and one case to `MeetingBroadcastAuthTest.php`) |
+| TC-P7-02 | Participant: mute / camera off / leave | Unchanged from Phase 5 — self `track.enabled` toggle plus `media-state` whisper; `leave` posts `/leave` and tears down the peer | PASS (regression-checked; no code change to this path) |
+| TC-P7-03 | Host: mute a participant (real-time) | `POST .../participants/{id}/mute` broadcasts `.host.control` (`action: mute`); the *target's own* client forces its mic off, flips its own mute button to "Unmute", and shows a "the host muted your microphone" notice — without the target taking any action | PASS (this path exposed BUG-009 — see below) |
+| TC-P7-04 | Host: remove a participant (real-time) | `POST .../participants/{id}/remove` sets `status = removed` and broadcasts `.host.control` (`action: remove`); the removed client is torn down and redirected to the join screen immediately; every other connected peer's tile for that participant disappears without waiting for ICE/DTLS timeout | PASS |
+| TC-P7-05 | Host: end meeting for everyone (real-time) | `POST .../end` broadcasts `.host.control` (`action: end`); every connected client (host included) tears down and lands on the join screen showing "This meeting has ended." | PASS |
+| TC-P7-06 | Host: lock / unlock meeting | Locked: a new (non-host) join attempt gets `403` and the join page shows "This meeting is currently locked by the host." before submitting; already-connected participants are unaffected; unlocking restores joining | PASS (this path exposed BUG-010 — see below) |
+| TC-P7-07 | Host: allow / disallow guests (live toggle) | Disabling guests mid-meeting causes a fresh guest visiting the join link to see the "sign in to join" prompt instead of the name form, without needing the meeting to be recreated | PASS |
+| TC-P7-08 | Host-only controls hidden from non-hosts | Per-tile "Mute"/"Remove" buttons and the lock/guests/end toolbar render only when `participant.role === 'host'`; a guest's own view of the room shows none of them | PASS |
+| TC-P7-09 | Server-side authorization | Every host-control endpoint (`lock`/`unlock`/`guests/enable`/`guests/disable`/`participants/{id}/mute`/`participants/{id}/remove`) returns `401` unauthenticated and `403` for a signed-in non-host; a participant id belonging to a different meeting returns `404`; the host cannot remove themselves (`409`) | PASS |
+| TC-P7-10 | Zero JS errors across the full flow | No uncaught errors/unhandled rejections on host or guest through mute/lock/unlock/guests-toggle/remove/end | PASS |
+
+Driven the same way as Phase 5/6: one authenticated host and one-or-more guests over CDP against real headless Chrome (`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`), asserting on live DOM state (button labels, tile counts, notice text) and `location.pathname` after each action, not just the HTTP response.
+
+BUG-009 and BUG-010 were found and fixed during this pass — see [BUGS.md](BUGS.md). Both are real-browser findings invisible to `Event::fake()`-based Feature tests: BUG-009 is a Docker-networking misconfiguration that silently broke every server-to-Reverb broadcast (client-side Echo whispers, used by all of Phase 5/6's signaling, never touch this code path, so it went undetected until Phase 7's first `broadcast()` call); BUG-010 is a timing race in the host's own optimistic UI update against its own self-received broadcast echo.

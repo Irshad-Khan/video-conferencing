@@ -142,6 +142,9 @@ async function leaveMeeting(): Promise<void> {
                 </p>
 
                 <template v-else>
+                    <p v-if="lookup.is_locked" class="text-sm text-amber-400">
+                        This meeting is currently locked by the host.
+                    </p>
                     <p v-if="generalError" class="text-sm text-red-400">{{ generalError }}</p>
 
                     <form v-if="!guestsBlocked" class="space-y-4" @submit.prevent="submitJoin">

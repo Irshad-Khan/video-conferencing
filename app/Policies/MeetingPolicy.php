@@ -26,4 +26,14 @@ class MeetingPolicy
     {
         return $user->id === $meeting->host_user_id;
     }
+
+    public function manageSettings(User $user, Meeting $meeting): bool
+    {
+        return $user->id === $meeting->host_user_id;
+    }
+
+    public function manageParticipants(User $user, Meeting $meeting): bool
+    {
+        return $user->id === $meeting->host_user_id;
+    }
 }
