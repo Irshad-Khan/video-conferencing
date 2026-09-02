@@ -128,3 +128,21 @@ Verified 2026-09-02, mcsirshad95@gmail.com.
 | TC-P4-10 | Code style | `./vendor/bin/pint --test` | PASS (59 files, no issues) |
 
 No bugs were logged during this pass.
+
+## Phase 5 Verification Checklist (WebRTC Audio/Video)
+
+Verified 2026-09-02, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P5-01 | Automated suite | `php artisan test` passes | PASS (70/70 tests, 190 assertions — adds `tests/Feature/Meetings/MeetingBroadcastAuthTest.php`) |
+| TC-P5-02 | Broadcasting auth — participant | An active (`joined`/`admitted`) participant authorizes `private-meeting.{uuid}`; a user who never joined, or a `waiting`-room participant, gets `403` | PASS |
+| TC-P5-03 | Broadcasting auth — guest | A guest with a valid `X-Guest-Token` header authorizes the channel; an invalid token, a `left` guest's token, or no token at all (and no session) gets `403` | PASS |
+| TC-P5-04 | Camera/mic + local preview (real browser) | `getUserMedia` grants a local stream, attached to the local `<video>` tile immediately on entering the room | PASS (driven via two headless Chrome instances launched with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream` over the Chrome DevTools Protocol, ports 9333/9334, each a fully separate browser profile so host and participant/guest hold independent sessions) |
+| TC-P5-05 | Offer/answer/ICE exchange, host + authenticated participant | Both peers' `RTCPeerConnection.connectionState` reaches `connected`; each sees the other's live remote video tile; zero uncaught JS errors on either side | PASS |
+| TC-P5-06 | Offer/answer/ICE exchange, host + guest | Same as TC-P5-05 with an unauthenticated guest (via `X-Guest-Token`) instead of a signed-in participant; host's tile shows the guest's chosen name | PASS (this path exposed BUG-008 — see below) |
+| TC-P5-07 | Mute / camera-off | Toggling mute or camera-off locally (`track.enabled`) whispers `media-state`; the remote peer's tile immediately shows `· muted` / `· camera off` | PASS |
+| TC-P5-08 | Leave / peer teardown | Leaving whispers `participant.bye`; the remaining peer's `RTCPeerConnection` closes and their tile disappears, leaving just the local tile | PASS |
+| TC-P5-09 | Code style | `./vendor/bin/pint --test` | PASS (61 files, no issues) |
+
+BUG-008 was found and fixed during this pass — see [BUGS.md](BUGS.md).

@@ -32,6 +32,11 @@ const router = createRouter({
             component: () => import('../pages/Join.vue'),
         },
         {
+            path: '/meeting/:code/room',
+            name: 'room',
+            component: () => import('../pages/Room.vue'),
+        },
+        {
             path: '/profile',
             name: 'profile',
             component: () => import('../pages/Profile.vue'),

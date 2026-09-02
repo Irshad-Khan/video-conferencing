@@ -171,12 +171,12 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Tests: valid/invalid/password-protected/unauthorized meeting, host/participant/guest join, leave, rejoin — DONE (18 automated Feature tests in `tests/Feature/Meetings/MeetingJoinTest.php`)
 
 ### Phase 5 — WebRTC Audio/Video (core)
-- [ ] Camera/mic access, local preview
-- [ ] Reverb signaling channel per meeting
-- [ ] Offer/answer/ICE exchange
-- [ ] Peer connection lifecycle + connection state UI
-- [ ] Mute/unmute, camera on/off (client-side toggle of local tracks)
-- [ ] Manual test: 2-browser call works end-to-end
+- [x] Camera/mic access, local preview — DONE (`getUserMedia` in `Room.vue`, attached to the local tile on entering the room)
+- [x] Reverb signaling channel per meeting — DONE (`private-meeting.{meeting_uuid}`; guests authorize via `X-Guest-Token` since they have no Sanctum session — see `AuthenticateBroadcastGuest`, [WEBRTC.md](WEBRTC.md#guest-signaling-auth))
+- [x] Offer/answer/ICE exchange — DONE (client whisper events on the private channel — `participant.announce`/`webrtc-offer`/`webrtc-answer`/`webrtc-ice-candidate`; see [WEBRTC.md](WEBRTC.md#signaling-sequence-per-new-peer-pair))
+- [x] Peer connection lifecycle + connection state UI — DONE (per-tile `connecting`/`connected`/`failed`/`disconnected`, driven by `RTCPeerConnection.connectionState`; `participant.bye` whisper on leave tears down the peer)
+- [x] Mute/unmute, camera on/off (client-side toggle of local tracks) — DONE (`track.enabled` toggle + `media-state` whisper so remote tiles reflect it)
+- [x] Manual test: 2-browser call works end-to-end — DONE (two independent headless Chrome profiles with fake media devices, driven over CDP — host+participant and host+guest both verified; see TESTING.md's Phase 5 checklist)
 
 ### Phase 6 — Multi-Participant Video
 - [ ] P2P mesh for 2–6 participants
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

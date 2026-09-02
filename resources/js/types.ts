@@ -68,4 +68,5 @@ export interface JoinMeetingResponse {
     participant: MeetingParticipant;
     meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status'>;
     guest_token: string | null;
+    presence_id: string;
 }

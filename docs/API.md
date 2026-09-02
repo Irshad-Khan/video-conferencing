@@ -109,6 +109,14 @@ Errors: `404` unknown code; `409` meeting is `ended`/`cancelled`; `422` wrong pa
 Public. Authenticated users are matched by session; guests must pass `{"guest_token": "..."}` (the value returned from `/join`). Sets the participant's `status` to `left` and records `left_at`.
 Response: `200 {"data": {...participant}}`, or `404` if no matching participant/guest-token is found.
 
+## WebRTC Signaling
+
+### `POST /broadcasting/auth`
+
+Not under `/api/v1` — this is Laravel's standard Reverb/Pusher-protocol channel authorization endpoint (`routes/channels.php`), called automatically by Laravel Echo before subscribing to `private-meeting.{meeting_uuid}`. Authorizes an authenticated user via their session, or a guest via an `X-Guest-Token` header (the token returned by `/join`) — see [SECURITY.md](SECURITY.md) and [WEBRTC.md](WEBRTC.md#guest-signaling-auth). Returns `403` unless the requester is an active (`joined`/`admitted`) participant of that specific meeting.
+
+Once subscribed, offer/answer/ICE-candidate exchange and the participant roster (`participant.announce`/`participant.bye`) travel as client whisper events on this channel — Reverb relays them directly, no further `/api/v1` calls involved. Full protocol: [WEBRTC.md](WEBRTC.md#signaling-sequence-per-new-peer-pair).
+
 ## Misc
 
 ### `GET /api/v1/health`

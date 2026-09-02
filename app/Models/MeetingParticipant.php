@@ -59,4 +59,13 @@ class MeetingParticipant extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /**
+     * Stable identifier used to address this participant on the Reverb presence
+     * channel (WebRTC signaling target, whisper routing).
+     */
+    public function presenceId(): string
+    {
+        return $this->user_id ? "user-{$this->user_id}" : "guest-{$this->id}";
+    }
 }

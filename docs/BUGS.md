@@ -202,3 +202,29 @@ Changed the three lifecycle actions in `MeetingController` to use `$meeting->for
 
 Test:
 `tests/Feature/Meetings/MeetingLifecycleTest.php` — `test_the_host_can_start_a_scheduled_meeting`, `test_the_host_can_end_a_live_meeting`, `test_the_host_can_cancel_a_scheduled_meeting` all assert the persisted status/timestamp changed; all pass.
+
+---
+
+## BUG-008
+
+Status: DONE
+
+Description:
+A guest could never establish a WebRTC connection — `Room.vue` set the guest's `X-Guest-Token` header at `window.Echo.connector.pusher.config.auth.headers`, but that path doesn't exist at runtime; pusher-js keeps the live `auth.headers` object the `/broadcasting/auth` request actually reads from at `window.Echo.connector.options.auth.headers` instead (`pusher.config` holds transport settings like `wsHost`/`cluster`, not the auth block). Setting the header threw `TypeError: Cannot read properties of undefined (reading 'headers')`, silently caught as an unhandled promise rejection, so the guest's channel subscription never carried the token and Reverb rejected it — the guest simply never received or sent any signaling, with no visible error in the UI.
+
+Steps:
+1. Join a meeting as a guest (no Sanctum session).
+2. Enter the room; observe the console for an unhandled rejection reading `Cannot read properties of undefined (reading 'headers')`.
+3. Compare against a signed-in participant in a second browser — the host sees no remote tile for the guest, and the guest sees no remote tile for the host.
+
+Expected:
+The guest's `/broadcasting/auth` request carries `X-Guest-Token`, authorizes against their `meeting_participants` row (`AuthenticateBroadcastGuest`), and offer/answer/ICE exchange proceeds normally.
+
+Actual:
+The header assignment threw before the channel was ever subscribed; the guest's Echo private-channel subscription silently failed, so no `participant.announce` whisper was ever sent or received on either side.
+
+Fix:
+Changed `resources/js/pages/Room.vue` to set the header at `window.Echo.connector.options.auth.headers['X-Guest-Token']` instead of the nonexistent `connector.pusher.config.auth` path.
+
+Test:
+Caught by real-browser E2E (this bug is invisible to the PHPUnit broadcasting-auth tests, which hit `/broadcasting/auth` directly and never exercise the frontend's header-setting code) — driven via two independent headless Chrome profiles (`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`) over CDP: a host and a guest both reach `RTCPeerConnection` with live remote video tiles and zero JS errors after the fix (TC-P5-06 in TESTING.md).

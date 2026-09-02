@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { isAxiosError } from 'axios';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
 import type { JoinMeetingResponse, MeetingLookup } from '../types';
 
 const route = useRoute();
+const router = useRouter();
 const { state } = useAuth();
 const code = String(route.params.code);
 const guestTokenKey = `guest_token_${code}`;
+const joinDataKey = `join_data_${code}`;
 
 const loading = ref(true);
 const lookup = ref<MeetingLookup | null>(null);
@@ -64,6 +66,11 @@ async function submitJoin(): Promise<void> {
 
         if (data.data.guest_token) {
             sessionStorage.setItem(guestTokenKey, data.data.guest_token);
+        }
+
+        if (data.data.participant.status !== 'waiting') {
+            sessionStorage.setItem(joinDataKey, JSON.stringify(data.data));
+            router.push({ name: 'room', params: { code } });
         }
     } catch (error) {
         if (isAxiosError(error) && error.response?.status === 422) {

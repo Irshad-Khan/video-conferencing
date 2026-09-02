@@ -13,7 +13,7 @@ Never trust client-supplied `user_id`, `role`, `host_id`, `meeting_id`, or `perm
 ## Authorization
 
 - Laravel Policies/Gates for every resource: `MeetingPolicy` (view/update/delete/start/end — host or co-host only), participant actions (mute/remove — host/co-host only), admin actions (`is_admin` guard).
-- Reverb private channel authorization (`routes/channels.php`) checks the requesting user/guest is an active (`admitted`/`joined`) participant of that specific meeting before allowing a subscribe — re-checked, not cached from connect time, for control events like mute/remove.
+- Reverb private channel authorization (`routes/channels.php`) checks the requesting user/guest is an active (`admitted`/`joined`) participant of that specific meeting before allowing a subscribe — re-checked, not cached from connect time, for control events like mute/remove. Guests authenticate this one request via their `X-Guest-Token` header (resolved to their `meeting_participants` row by `AuthenticateBroadcastGuest`, since they have no Sanctum session); a `left`/`removed`/`rejected` guest's token stops authorizing immediately.
 - Host-only WebSocket-triggered actions (mute participant, remove participant, end meeting, lock) are validated against the DB role, never against a client-sent "I am host" flag.
 
 ## Input Validation

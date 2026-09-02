@@ -109,6 +109,7 @@ class MeetingJoinController extends Controller
                 'participant' => $participant,
                 'meeting' => $meeting->only(['meeting_uuid', 'meeting_code', 'title', 'status']),
                 'guest_token' => $guestToken,
+                'presence_id' => $participant->presenceId(),
             ],
         ]);
     }

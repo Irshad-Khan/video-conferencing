@@ -22,12 +22,18 @@ The signaling server (Reverb) never sees decoded/decrypted media — only SDP an
 
 ## Signaling Sequence (per new peer pair)
 
-1. New participant joins → subscribes to `private-meeting.{meeting_uuid}` Reverb channel.
-2. Existing participants are notified (`participant.joined`) and each creates an `RTCPeerConnection`, generates an SDP **offer**, sends it via the channel (`webrtc.offer`, targeted at the new participant's connection id).
-3. New participant receives each offer, sets remote description, creates an **answer**, sends it back (`webrtc.answer`).
-4. Both sides exchange **ICE candidates** (`webrtc.ice-candidate`) as they're discovered (trickle ICE).
-5. Connection state transitions are surfaced in the UI (`connecting` → `connected` / `failed` / `disconnected`).
-6. On `participant.left` / `left the call`, all peers tear down their connection to that participant.
+The channel is `private-meeting.{meeting_uuid}` (plain private, not presence — see "Why not a presence channel" below). All signaling — roster, offer/answer, ICE — travels as client **whisper** events on this one channel; Reverb relays them without any Laravel/PHP involvement per message, only the initial subscribe is authenticated server-side (`routes/channels.php`).
+
+1. New participant joins the room, subscribes to the channel, and once subscription is confirmed whispers `participant.announce` (`{ id, name }`, `id` being their stable presence id — `user-{user_id}` or `guest-{participant_id}`).
+2. Every existing participant is listening for `participant.announce`; on receipt each creates an `RTCPeerConnection`, generates an SDP **offer**, and whispers it (`webrtc-offer`, targeted at the new participant's id).
+3. The new participant receives each offer, sets the remote description, creates an **answer**, and whispers it back (`webrtc-answer`).
+4. Both sides exchange **ICE candidates** (`webrtc-ice-candidate`) as they're discovered (trickle ICE).
+5. Connection state transitions are surfaced in the UI (`connecting` → `connected` / `failed` / `disconnected`), driven by `RTCPeerConnection.connectionState`.
+6. On leaving, a participant whispers `participant.bye`; every peer tears down its connection to that id. An ungraceful departure (closed tab, crash) has no `bye` to react to — the peer connection eventually surfaces as `disconnected`/`failed` via ICE/DTLS timeout instead, and the tile reflects that state.
+
+### Why not a presence channel
+
+Pusher/Reverb presence channels derive their member id from `Auth::user()->getAuthIdentifier()`, which for a real signed-in user is their `users.id` and — via `AuthenticateBroadcastGuest` — for a guest is their `meeting_participants.id`. Those are two independent auto-increment sequences, so a user and a guest sharing the same meeting can collide on the same numeric presence id, corrupting Reverb's member-tracking. A plain private channel with application-level roster whispers sidesteps this entirely and is what's implemented.
 
 ## STUN / TURN
 
@@ -50,8 +56,12 @@ Browser B
 ## Client-Side Media Handling
 
 - `getUserMedia({ audio, video })` for camera/mic; local preview attached immediately, independent of signaling state.
-- Mute/unmute and camera on/off toggle `track.enabled` locally (renegotiation-free) and broadcast a `media.state-changed` signaling event so peers update UI (mic/camera icons) without needing to inspect the media itself.
+- Mute/unmute and camera on/off toggle `track.enabled` locally (renegotiation-free) and whisper a `media-state` signaling event (`{ from, mic, camera }`) so peers update UI (mic/camera icons) without needing to inspect the media itself — necessary because a disabled track keeps flowing at the transport level with no automatic remote-side signal.
 - Screen share (Phase 8) uses `getDisplayMedia`, replaces the outgoing video track via `RTCRtpSender.replaceTrack` (no renegotiation needed), and restores the camera track on stop.
+
+## Guest Signaling Auth
+
+Guests never get a Sanctum session, so they can't rely on the cookie-based `$request->user()` that Laravel's default `/broadcasting/auth` route uses. `App\Http\Middleware\AuthenticateBroadcastGuest` (registered only on the broadcasting-auth route group in `bootstrap/app.php`) resolves an unauthenticated request's identity from an `X-Guest-Token` header — the same one-time token returned by `POST /meetings/{code}/join` — by hashing it and matching it against `meeting_participants.guest_token`. The frontend sets this header at runtime via `window.Echo.connector.options.auth.headers['X-Guest-Token']` (see `resources/js/pages/Room.vue`) before subscribing, since the token is only known after a successful join, not at Echo's initial construction.
 
 ## When an SFU Becomes Necessary
 
@@ -64,5 +74,5 @@ Candidates evaluated (not implemented in MVP): **mediasoup** (Node-based SFU, fi
 
 ## Known Constraints
 
-- No CI-automated WebRTC media tests (headless browsers can fake media devices, but reliably asserting actual audio/video flow end-to-end in CI is out of scope for MVP) — verified via the manual multi-browser procedure in [TESTING.md](TESTING.md) instead.
+- No CI-automated WebRTC media tests — the manual multi-browser procedure in [TESTING.md](TESTING.md) is run by hand (via two headless Chrome instances with `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`, driven over the Chrome DevTools Protocol) rather than wired into the automated test suite, since that setup is heavier than a `php artisan test` run and not worth the CI investment at MVP scale.
 - Recording is out of scope until Phase 14 is explicitly scheduled (see ROADMAP.md §Phase 14 for the browser-vs-server-side recording tradeoff).
