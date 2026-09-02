@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 #[Fillable(['title', 'description', 'password', 'scheduled_at', 'waiting_room_enabled', 'allow_guests'])]
@@ -87,5 +88,13 @@ class Meeting extends Model
     public function host(): BelongsTo
     {
         return $this->belongsTo(User::class, 'host_user_id');
+    }
+
+    /**
+     * @return HasMany<MeetingParticipant, $this>
+     */
+    public function participants(): HasMany
+    {
+        return $this->hasMany(MeetingParticipant::class);
     }
 }

@@ -40,3 +40,32 @@ export interface MeetingFormPayload {
     waiting_room_enabled?: boolean;
     allow_guests?: boolean;
 }
+
+export interface MeetingLookup {
+    meeting_code: string;
+    title: string;
+    host_name: string;
+    status: MeetingStatus;
+    has_password: boolean;
+    allow_guests: boolean;
+}
+
+export type ParticipantRole = 'host' | 'co_host' | 'participant' | 'guest';
+export type ParticipantStatus = 'waiting' | 'admitted' | 'joined' | 'left' | 'removed' | 'rejected';
+
+export interface MeetingParticipant {
+    id: number;
+    meeting_id: number;
+    user_id: number | null;
+    guest_name: string | null;
+    role: ParticipantRole;
+    status: ParticipantStatus;
+    joined_at: string | null;
+    left_at: string | null;
+}
+
+export interface JoinMeetingResponse {
+    participant: MeetingParticipant;
+    meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status'>;
+    guest_token: string | null;
+}

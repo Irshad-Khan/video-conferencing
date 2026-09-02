@@ -163,12 +163,12 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Tests: create, duplicate code prevention, unauthorized edit/delete, host permissions, lifecycle — DONE (23 automated Feature tests across `tests/Feature/Meetings/{MeetingCreation,MeetingAuthorization,MeetingLifecycle,MeetingList}Test.php`)
 
 ### Phase 4 — Join Meeting
-- [ ] Public join URL (`/meeting/{code}`)
-- [ ] Meeting existence + password check
-- [ ] Guest join support (if allowed)
-- [ ] `meeting_participants` table + roles (host/co_host/participant/guest)
-- [ ] Waiting room hook (full feature in Phase 11)
-- [ ] Tests: valid/invalid/password-protected/unauthorized meeting, host/participant/guest join, leave, rejoin
+- [x] Public join URL (`/meeting/{code}`) — DONE (`Join.vue`, unauthenticated route; looks up via `GET /meetings/lookup/{code}`)
+- [x] Meeting existence + password check — DONE (404 for unknown codes; bcrypt `Hash::check` against `meetings.password`, host bypasses)
+- [x] Guest join support (if allowed) — DONE (`allow_guests` gate; guest gets a one-time `guest_token` for `/leave`, never a session)
+- [x] `meeting_participants` table + roles (host/co_host/participant/guest) — DONE (`MeetingParticipant` model; role auto-assigned by join context)
+- [x] Waiting room hook (full feature in Phase 11) — DONE (`waiting_room_enabled` puts non-host joiners in `status: waiting` instead of `joined`; admit/reject UI deferred to Phase 11)
+- [x] Tests: valid/invalid/password-protected/unauthorized meeting, host/participant/guest join, leave, rejoin — DONE (18 automated Feature tests in `tests/Feature/Meetings/MeetingJoinTest.php`)
 
 ### Phase 5 — WebRTC Audio/Video (core)
 - [ ] Camera/mic access, local preview
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

@@ -86,6 +86,29 @@ Response: `200 {"data": {...meeting}}`, or `409` if not currently `live`.
 Transitions `scheduled` → `cancelled`.
 Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
 
+## Joining a Meeting
+
+These endpoints are public (no `auth:sanctum` required) so both authenticated users and guests can join. Meetings are addressed by `meeting_code` (the short human-friendly code, e.g. `ABC-123-XYZ`), not `meeting_uuid`.
+
+### `GET /api/v1/meetings/lookup/{code}`
+
+Public. Returns just enough for a join screen to render — no auth details.
+Response: `200 {"data": {"meeting_code", "title", "host_name", "status", "has_password", "allow_guests"}}`, or `404` if the code doesn't exist.
+
+### `POST /api/v1/meetings/{code}/join`
+
+Public, rate-limited (20/min). Joins the meeting as the authenticated user, or as a guest if `allow_guests` is true and no session is present. The host joins their own meeting as `role: host` and always bypasses the password check and waiting room. Re-joining (an authenticated user who previously left) updates their existing `meeting_participants` row rather than creating a new one.
+
+Request: `{"password"?, "guest_name"?}` (`guest_name` required for guests when `allow_guests` is true).
+Response: `200 {"data": {"participant": {...}, "meeting": {...}, "guest_token": string | null}}`. `guest_token` is a one-time, non-authenticated join token returned only to guests (never for signed-in users) — the frontend stores it client-side and must send it back on `/leave`, since guests have no session to authenticate that call.
+
+Errors: `404` unknown code; `409` meeting is `ended`/`cancelled`; `422` wrong password or missing `guest_name` (standard validation-error shape); `403` guests disallowed, or the requester was previously `removed`/`rejected` from this meeting.
+
+### `POST /api/v1/meetings/{code}/leave`
+
+Public. Authenticated users are matched by session; guests must pass `{"guest_token": "..."}` (the value returned from `/join`). Sets the participant's `status` to `left` and records `left_at`.
+Response: `200 {"data": {...participant}}`, or `404` if no matching participant/guest-token is found.
+
 ## Misc
 
 ### `GET /api/v1/health`
@@ -94,4 +117,4 @@ Public. `200 {"status": "ok"}`. Used for container/infra health checks (see [DEP
 
 ---
 
-Join flow, chat, and admin endpoints are documented here as they're implemented in later phases (see [ROADMAP.md](ROADMAP.md) §11).
+Chat and admin endpoints are documented here as they're implemented in later phases (see [ROADMAP.md](ROADMAP.md) §11).

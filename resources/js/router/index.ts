@@ -27,6 +27,11 @@ const router = createRouter({
             meta: { requiresAuth: true },
         },
         {
+            path: '/meeting/:code',
+            name: 'join',
+            component: () => import('../pages/Join.vue'),
+        },
+        {
             path: '/profile',
             name: 'profile',
             component: () => import('../pages/Profile.vue'),

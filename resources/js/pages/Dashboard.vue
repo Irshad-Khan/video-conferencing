@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { isAxiosError } from 'axios';
+import { useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
 import type { Meeting, MeetingFormPayload } from '../types';
 
 const { state } = useAuth();
+const router = useRouter();
+
+const joinCode = ref('');
+
+function goToJoin(): void {
+    const code = joinCode.value.trim();
+    if (code) router.push(`/meeting/${code}`);
+}
 
 const meetings = ref<Meeting[]>([]);
 const loading = ref(true);
@@ -178,13 +187,29 @@ function formatDate(iso: string | null): string {
                 <h1 class="text-xl font-semibold">Welcome, {{ state.user?.name }}</h1>
                 <p class="text-neutral-400 mt-1 text-sm">My meetings</p>
             </div>
-            <button
-                type="button"
-                class="rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium px-4 py-2"
-                @click="openCreateForm"
-            >
-                New meeting
-            </button>
+            <div class="flex items-center gap-2">
+                <form class="flex items-center gap-2" @submit.prevent="goToJoin">
+                    <input
+                        v-model="joinCode"
+                        type="text"
+                        placeholder="Enter a meeting code"
+                        class="rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                    />
+                    <button
+                        type="submit"
+                        class="rounded-md border border-neutral-800 text-sm font-medium px-4 py-2 hover:bg-neutral-900"
+                    >
+                        Join
+                    </button>
+                </form>
+                <button
+                    type="button"
+                    class="rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium px-4 py-2"
+                    @click="openCreateForm"
+                >
+                    New meeting
+                </button>
+            </div>
         </div>
 
         <p v-if="loadError" class="text-sm text-red-400">{{ loadError }}</p>

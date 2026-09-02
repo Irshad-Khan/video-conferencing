@@ -46,14 +46,15 @@ Indexes: unique(`meeting_uuid`), unique(`meeting_code`), index(`host_user_id`), 
 | meeting_id | FK → meetings.id | |
 | user_id | FK → users.id, nullable | null for guests |
 | guest_name | string, nullable | required when user_id is null |
+| guest_token | string, nullable | sha256 hash of a short-lived token issued to guests on join, used to authenticate their `/leave` call (never stored/returned raw) |
 | role | enum: host, co_host, participant, guest | |
 | status | enum: waiting, admitted, joined, left, removed, rejected | |
 | joined_at | timestamp nullable | |
 | left_at | timestamp nullable | |
 | timestamps | | |
 
-Indexes: index(`meeting_id`), index(`user_id`), index(`status`).
-Constraint (app-level, enforced in a Form Request / model observer, not a DB CHECK): exactly one of `user_id` / `guest_name` must be present.
+Indexes: index(`meeting_id`), index(`user_id`), index(`status`), index(`guest_token`), unique(`meeting_id`, `user_id`) (one participant row per authenticated user per meeting; re-joining updates the existing row rather than duplicating it — `NULL` `user_id` values are exempt from the uniqueness check, so guests are unaffected).
+Constraint (app-level, enforced in the join controller, not a DB CHECK): exactly one of `user_id` / `guest_name` must be present.
 
 ## meeting_messages
 

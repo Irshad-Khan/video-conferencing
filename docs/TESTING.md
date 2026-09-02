@@ -109,3 +109,22 @@ Verified 2026-09-02, mcsirshad95@gmail.com.
 | TC-P3-10 | Code style | `./vendor/bin/pint --test` | PASS (53 files, no issues) |
 
 Bugs found and fixed during this pass are logged in [BUGS.md](BUGS.md) (BUG-007).
+
+## Phase 4 Verification Checklist (Join Meeting)
+
+Verified 2026-09-02, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P4-01 | Automated suite | `php artisan test` passes | PASS (62/62 tests, 182 assertions — adds `tests/Feature/Meetings/MeetingJoinTest.php`) |
+| TC-P4-02 | Public lookup | `GET /meetings/lookup/{code}` returns title/host/status/has_password/allow_guests for a valid code, `404` for an unknown one, never leaks the password | PASS |
+| TC-P4-03 | Host join | The host joins their own meeting as `role: host`, bypassing both the password check and the waiting room | PASS |
+| TC-P4-04 | Authenticated participant join | A signed-in non-host joins as `role: participant`; placed in `waiting` status when `waiting_room_enabled` is true, `joined` otherwise | PASS |
+| TC-P4-05 | Password protection | Wrong password rejected `422` with a field error; correct password admits the joiner | PASS |
+| TC-P4-06 | Guest join | A guest (no session) joins as `role: guest` given a name, when `allow_guests` is true, and receives a one-time `guest_token`; rejected `403` when `allow_guests` is false; rejected `422` when no name is given | PASS |
+| TC-P4-07 | Meeting state guardrails | Joining an `ended` or `cancelled` meeting is rejected `409`; an unknown code is `404` | PASS |
+| TC-P4-08 | Leave / rejoin | An authenticated participant can leave (`status: left`) and rejoin, reusing their existing `meeting_participants` row rather than duplicating it; a `removed`/`rejected` participant cannot rejoin (`403`); a guest can leave using their `guest_token` | PASS |
+| TC-P4-09 | Frontend flow (real browser) | From the Dashboard's "Join" box, navigating to `/meeting/{code}`: host joins bypassing password/waiting room and leaves; a second signed-in user is rejected with the wrong password then admitted to the waiting room with the correct one; a signed-out guest is prompted for a name, joins the waiting room, and leaves via a client-stored `guest_token`; a meeting with guests disabled shows a "sign in to join" prompt instead of a guest form; an unknown code shows "Meeting not found" | PASS (driven via Chrome DevTools Protocol against the live Docker stack at localhost:8300) |
+| TC-P4-10 | Code style | `./vendor/bin/pint --test` | PASS (59 files, no issues) |
+
+No bugs were logged during this pass.
