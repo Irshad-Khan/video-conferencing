@@ -17,15 +17,19 @@ Route::prefix('v1')->group(function () {
         return response()->json(['status' => 'ok']);
     });
 
-    Route::post('/auth/register', [RegisteredUserController::class, 'store']);
+    Route::post('/auth/register', [RegisteredUserController::class, 'store'])
+        ->middleware('throttle:register');
     Route::post('/auth/login', [AuthenticatedSessionController::class, 'store']);
 
-    Route::get('/meetings/lookup/{code}', [MeetingJoinController::class, 'lookup']);
+    Route::get('/meetings/lookup/{code}', [MeetingJoinController::class, 'lookup'])
+        ->middleware('throttle:30,1');
     Route::post('/meetings/{code}/join', [MeetingJoinController::class, 'join'])
         ->middleware('throttle:20,1');
-    Route::post('/meetings/{code}/leave', [MeetingJoinController::class, 'leave']);
+    Route::post('/meetings/{code}/leave', [MeetingJoinController::class, 'leave'])
+        ->middleware('throttle:30,1');
 
-    Route::get('/meetings/{code}/messages', [MeetingMessageController::class, 'index']);
+    Route::get('/meetings/{code}/messages', [MeetingMessageController::class, 'index'])
+        ->middleware('throttle:60,1');
     Route::post('/meetings/{code}/messages', [MeetingMessageController::class, 'store'])
         ->middleware('throttle:30,1');
 

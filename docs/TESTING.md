@@ -310,3 +310,17 @@ Verified 2026-09-03, mcsirshad95@gmail.com.
 | TC-P15-07 | Server-side authorization | A guest gets `401` and a non-admin gets `403` from every `/admin/*` endpoint; an admin succeeds | PASS (automated, `AdminAuthorizationTest`) |
 
 Driven via two real headless Chrome profiles over CDP — one for the admin, a separate one for the target user being disabled (registering the target in a second *tab* on the admin's own profile was tried first and hit exactly the cookie-sharing gotcha documented for Phase 10/11: it silently clobbered the admin's session cookie, since cookies are shared across every tab in one profile — fixed by giving the target its own profile/port, matching established practice). Admin.vue fetches each tab's data once on mount (same no-live-polling pattern as `Dashboard.vue`/`History.vue`), so the verification script reloads `/admin` after registering the target user or creating a test meeting before asserting either shows up — not a bug, just matching the page's actual (and intentional) refresh model. No application bugs were found.
+
+## Phase 16 Verification Checklist (Security Hardening)
+
+Verified 2026-09-03, mcsirshad95@gmail.com. This phase is an audit, not a new feature — see [SECURITY.md](SECURITY.md#phase-16-audit-2026-09-03) for the full write-up of what was reviewed and what was found. The table below covers only what actually changed.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P16-00 | Automated suite | `php artisan test` passes | PASS (137/137 tests, 467 assertions — adds `tests/Feature/RateLimitingTest.php` (3 cases) and one to `RegistrationTest.php`) |
+| TC-P16-01 | General rate limit wired to previously-unthrottled routes | Every route, including ones with no throttle before this phase (meeting CRUD, admin endpoints, meeting-code lookup), carries `X-RateLimit-Limit: 120` | PASS (automated + spot-checked live: `curl -sI` against a running dev-server route shows the header) |
+| TC-P16-02 | Registration throttle actually caps repeated attempts | 11 rapid registrations from one client: the first 10 succeed, the 11th is `429` | PASS (automated — this is the test that caught BUG-011) |
+| TC-P16-03 | A single legitimate registration/login/lookup/join still works normally | The new throttles don't interfere with normal single-attempt usage | PASS (live, over CDP — registered a user, logged in, looked up a meeting, joined it, all in one pass with no unexpected `429`) |
+| TC-P16-04 | XSS/SQLi/CSRF re-confirmed by grep, not just memory | `grep -rn 'v-html\|innerHTML' resources/js/` and `grep -rn 'DB::raw\|whereRaw\|selectRaw\|DB::statement' app/` both return nothing; no CSRF `$except`/bypass exists anywhere in `bootstrap/app.php` or `app/Http/` | PASS |
+
+Rate-limiting behavior was verified two ways: the new `RateLimitingTest.php` asserts the `X-RateLimit-Limit` header is present on routes that had none before (a cheap, fast regression check — deliberately not firing 120+ requests in a test just to trip the general ceiling, since Laravel's own `ThrottleRequests` middleware is already well-tested and the real risk being guarded against is someone accidentally removing `throttleApi()` from `bootstrap/app.php`), and a single real headless-Chrome pass over CDP confirmed the new throttles don't break any normal single-attempt user flow. No other application bugs were found beyond the two logged in [BUGS.md](BUGS.md) (BUG-011, and the `SESSION_SECURE_COOKIE` documentation gap noted in SECURITY.md's audit write-up).

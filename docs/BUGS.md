@@ -279,3 +279,28 @@ Fix:
 
 Test:
 Caught and verified via real-browser E2E only (a timing race between a WebSocket push and a pending HTTP response isn't reachable through `Event::fake()`-based Feature tests, which never dispatch a real broadcast). Reproduced and confirmed fixed via CDP: lock → unlock → the "Unlock meeting" button is found and clicked successfully, and a fresh guest can join again afterward.
+
+---
+
+## BUG-011
+
+Status: DONE
+
+Description:
+While adding rate limiting to `/api/v1/auth/register` as part of the Phase 16 security audit, the first attempt used Laravel's numeric-signature throttle (`->middleware('throttle:10,1')`), which keys by *the current authenticated user's id, falling back to IP only for guests*. Registration's whole job is to authenticate the caller as a brand-new user on success (`Auth::login($user)` in `RegisteredUserController`) — so every successful registration handed the *next* request a fresh, never-before-seen throttle key (the new user's id), never accumulating hits against any single key. The cap was silently a no-op against exactly the abuse pattern it existed to stop: scripted repeated registration from one client.
+
+Steps:
+1. Add `->middleware('throttle:10,1')` to `POST /api/v1/auth/register`.
+2. From a single test client (one cookie/session jar, matching a real scripted-abuse client reusing one HTTP session), POST to `/register` 11 times in a row with different emails each time.
+
+Expected:
+The 11th request is rejected `429` — the endpoint is capped at 10/minute.
+
+Actual:
+All 11 requests succeeded with `201`, each creating a new user, because each one's throttle key (the newly-registered user's own id, set by the *previous* request's `Auth::login()`) had never been hit before.
+
+Fix:
+Replaced the numeric-signature throttle with a dedicated named limiter, `RateLimiter::for('register', fn ($request) => Limit::perMinute(10)->by($request->ip()))` (`AppServiceProvider::boot()`), keyed by IP only — immune to the auth-identity shift since it never looks at `$request->user()` at all. Route now uses `->middleware('throttle:register')`.
+
+Test:
+`tests/Feature/Auth/RegistrationTest.php::test_repeated_registration_attempts_are_rate_limited` — fires 10 successful registrations then asserts the 11th is `429` and never reaches the database. Caught this exact bug on first run (11th request returned `201`, not `429`) before the fix.

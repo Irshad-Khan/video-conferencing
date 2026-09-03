@@ -65,4 +65,26 @@ class RegistrationTest extends TestCase
 
         $response->assertStatus(422)->assertJsonValidationErrors(['name', 'email', 'password']);
     }
+
+    public function test_repeated_registration_attempts_are_rate_limited(): void
+    {
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/v1/auth/register', [
+                'name' => 'Jane Doe',
+                'email' => "jane{$i}@example.com",
+                'password' => 'password123',
+                'password_confirmation' => 'password123',
+            ])->assertStatus(201);
+        }
+
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Jane Doe',
+            'email' => 'jane-overflow@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertStatus(429);
+        $this->assertDatabaseMissing('users', ['email' => 'jane-overflow@example.com']);
+    }
 }

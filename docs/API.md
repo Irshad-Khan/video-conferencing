@@ -4,11 +4,13 @@ Versioned REST API under `/api/v1`. Auth is Sanctum SPA cookie-session auth for 
 
 All responses are JSON. Successful single-resource responses are wrapped as `{"data": {...}}`. Validation failures return `422` with `{"message": "...", "errors": {"field": ["..."]}}` (standard Laravel Form Request format).
 
+Every route below carries a general rate limit of 120 requests/minute (per authenticated user, or per IP for a guest/unauthenticated caller), returning `429` once exceeded — added in Phase 16. Routes noted individually as "rate-limited" below carry an additional, tighter limit on top of that general one, for the endpoints most worth capping harder (auth, meeting-code guessing, chat spam). See [SECURITY.md](SECURITY.md).
+
 ## Authentication
 
 ### `POST /api/v1/auth/register`
 
-Public. Creates a user, logs them in (session), and returns the user.
+Public, rate-limited (10/min, by IP — deliberately not the default user-id-or-IP key, since a successful registration authenticates the caller as a brand-new user, which would otherwise hand every successful attempt a fresh, never-throttled key; see BUG-011 in [BUGS.md](BUGS.md)). Creates a user, logs them in (session), and returns the user.
 
 Request: `{"name", "email", "password", "password_confirmation"}`
 Response: `201 {"data": {"id", "name", "email", "created_at", "updated_at"}}`
@@ -144,7 +146,7 @@ These endpoints are public (no `auth:sanctum` required) so both authenticated us
 
 ### `GET /api/v1/meetings/lookup/{code}`
 
-Public. Returns just enough for a join screen to render — no auth details.
+Public, rate-limited (30/min) — since this needs no `password`/`guest_name` to call, it's the cheapest endpoint to use for brute-force meeting-code guessing, so it carries its own limit rather than relying on the general one alone. Returns just enough for a join screen to render — no auth details.
 Response: `200 {"data": {"meeting_code", "title", "host_name", "status", "has_password", "allow_guests"}}`, or `404` if the code doesn't exist.
 
 ### `POST /api/v1/meetings/{code}/join`
@@ -160,7 +162,7 @@ Errors: `404` unknown code; `409` meeting is `ended`/`cancelled`; `422` wrong pa
 
 ### `POST /api/v1/meetings/{code}/leave`
 
-Public. Authenticated users are matched by session; guests must pass `{"guest_token": "..."}` (the value returned from `/join`). Sets the participant's `status` to `left` and records `left_at`.
+Public, rate-limited (30/min). Authenticated users are matched by session; guests must pass `{"guest_token": "..."}` (the value returned from `/join`). Sets the participant's `status` to `left` and records `left_at`.
 Response: `200 {"data": {...participant}}`, or `404` if no matching participant/guest-token is found.
 
 ## Chat
@@ -169,7 +171,7 @@ Public (no `auth:sanctum` required, so guests can participate), but every endpoi
 
 ### `GET /api/v1/meetings/{code}/messages`
 
-Returns the full message history in chronological order.
+Rate-limited (60/min). Returns the full message history in chronological order.
 Response: `200 {"data": [{"id", "message", "sender_name", "sender_role", "presence_id", "created_at"}]}`, or `403` if the caller isn't currently an active participant, or `404` for an unknown code.
 
 ### `POST /api/v1/meetings/{code}/messages`

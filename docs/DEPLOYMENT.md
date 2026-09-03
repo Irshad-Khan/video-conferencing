@@ -23,7 +23,7 @@ docker compose exec app php artisan admin:grant user@example.com
 
 Same Docker Compose services, with these changes:
 
-- `APP_ENV=production`, `APP_DEBUG=false`.
+- `APP_ENV=production`, `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true` (session/CSRF cookies only ever sent over HTTPS — left unset in `.env.example` since local dev runs over plain HTTP; see [SECURITY.md](SECURITY.md)).
 - Frontend built once (`npm run build`) into `public/build`, served as static assets by Nginx instead of the Vite dev server — the `vite` service is dev-only and not part of the production compose file/profile.
 - Reverse proxy (Nginx or Traefik) in front of Nginx terminating TLS (Let's Encrypt/ACME), forwarding HTTP → app and WS/WSS → the Reverb service.
 - **coturn** deployed as a self-hosted TURN server (own container or host process) — required for reliable WebRTC connectivity across NATs/firewalls in real deployments. Minimum config: a realm, a shared static-auth secret (or long-term credentials tied to short-lived per-meeting turn credentials issued by the Laravel backend), UDP relay port range opened on the host/firewall, and TLS (`turns:`) for the TURN listener where possible.
