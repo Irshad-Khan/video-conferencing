@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Events\HostControlEvent;
+use App\Events\MeetingScheduled;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMeetingRequest;
 use App\Http\Requests\UpdateMeetingRequest;
@@ -26,6 +27,10 @@ class MeetingController extends Controller
     public function store(StoreMeetingRequest $request): JsonResponse
     {
         $meeting = $request->user()->meetings()->create($request->validated());
+
+        if ($meeting->scheduled_at !== null) {
+            event(new MeetingScheduled($meeting));
+        }
 
         return response()->json(['data' => $meeting], 201);
     }

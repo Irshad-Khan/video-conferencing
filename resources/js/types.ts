@@ -26,6 +26,7 @@ export interface Meeting {
     allow_guests: boolean;
     is_locked: boolean;
     scheduled_at: string | null;
+    duration_minutes: number | null;
     started_at: string | null;
     ended_at: string | null;
     created_at: string;
@@ -37,6 +38,7 @@ export interface MeetingFormPayload {
     description?: string | null;
     password?: string | null;
     scheduled_at?: string | null;
+    duration_minutes?: number | null;
     waiting_room_enabled?: boolean;
     allow_guests?: boolean;
 }

@@ -32,6 +32,7 @@ Database: MySQL 8. All tables use InnoDB, `id` bigint unsigned auto-increment pr
 | allow_guests | boolean, default true | |
 | is_locked | boolean, default false | Phase 7 |
 | scheduled_at | timestamp nullable | |
+| duration_minutes | unsigned smallint nullable | expected duration, 1-1440, informational only — not enforced (a live meeting is still ended manually via `/end`) (Phase 12) |
 | started_at | timestamp nullable | |
 | ended_at | timestamp nullable | |
 | timestamps | | |

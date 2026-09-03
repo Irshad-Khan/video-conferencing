@@ -26,6 +26,7 @@ const title = ref('');
 const description = ref('');
 const password = ref('');
 const scheduledAt = ref('');
+const durationMinutes = ref('');
 const waitingRoomEnabled = ref(false);
 const allowGuests = ref(true);
 const formErrors = ref<Record<string, string[]>>({});
@@ -34,17 +35,47 @@ const submitting = ref(false);
 const actionError = ref('');
 const actionMeetingId = ref<number | null>(null);
 
+function startOfDay(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** Calendar-day offset of `iso` from today (0 = today, 1 = tomorrow, negative = past). */
+function dayOffset(iso: string): number {
+    const diffMs = startOfDay(new Date(iso)).getTime() - startOfDay(new Date()).getTime();
+    return Math.round(diffMs / 86_400_000);
+}
+
+function byScheduledAt(a: Meeting, b: Meeting): number {
+    return (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '');
+}
+
 const live = computed(() => meetings.value.filter((m: Meeting) => m.status === 'live'));
+const scheduled = computed(() => meetings.value.filter((m: Meeting) => m.status === 'scheduled'));
+
+// Instant meetings (no scheduled_at) are meant to start right away, so they group under Today.
+const today = computed(() =>
+    scheduled.value.filter((m: Meeting) => !m.scheduled_at || dayOffset(m.scheduled_at) <= 0).sort(byScheduledAt),
+);
+const tomorrow = computed(() =>
+    scheduled.value.filter((m: Meeting) => m.scheduled_at && dayOffset(m.scheduled_at) === 1).sort(byScheduledAt),
+);
 const upcoming = computed(() =>
-    meetings.value
-        .filter((m: Meeting) => m.status === 'scheduled')
-        .sort((a: Meeting, b: Meeting) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '')),
+    scheduled.value.filter((m: Meeting) => m.scheduled_at && dayOffset(m.scheduled_at) > 1).sort(byScheduledAt),
 );
 const past = computed(() =>
     meetings.value
         .filter((m: Meeting) => m.status === 'ended' || m.status === 'cancelled')
         .sort((a: Meeting, b: Meeting) => b.updated_at.localeCompare(a.updated_at)),
 );
+
+function formatDuration(minutes: number | null): string | null {
+    if (!minutes) return null;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}m`;
+}
 
 async function loadMeetings(): Promise<void> {
     loading.value = true;
@@ -67,6 +98,7 @@ function resetForm(): void {
     description.value = '';
     password.value = '';
     scheduledAt.value = '';
+    durationMinutes.value = '';
     waitingRoomEnabled.value = false;
     allowGuests.value = true;
     formErrors.value = {};
@@ -84,6 +116,7 @@ function openEditForm(meeting: Meeting): void {
     description.value = meeting.description ?? '';
     password.value = '';
     scheduledAt.value = meeting.scheduled_at ? toDatetimeLocal(meeting.scheduled_at) : '';
+    durationMinutes.value = meeting.duration_minutes ? String(meeting.duration_minutes) : '';
     waitingRoomEnabled.value = meeting.waiting_room_enabled;
     allowGuests.value = meeting.allow_guests;
     formErrors.value = {};
@@ -109,6 +142,7 @@ async function submitForm(): Promise<void> {
         title: title.value,
         description: description.value || null,
         scheduled_at: scheduledAt.value ? new Date(scheduledAt.value).toISOString() : null,
+        duration_minutes: durationMinutes.value ? Number(durationMinutes.value) : null,
         waiting_room_enabled: waitingRoomEnabled.value,
         allow_guests: allowGuests.value,
     };
@@ -243,7 +277,7 @@ function formatDate(iso: string | null): string {
                     ></textarea>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-3 gap-4">
                     <div>
                         <label for="scheduled_at" class="block text-sm text-neutral-300 mb-1">
                             Scheduled for (leave blank for instant)
@@ -256,6 +290,24 @@ function formatDate(iso: string | null): string {
                         />
                         <p v-if="formErrors.scheduled_at" class="text-sm text-red-400 mt-1">
                             {{ formErrors.scheduled_at[0] }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <label for="duration_minutes" class="block text-sm text-neutral-300 mb-1">
+                            Duration (minutes, optional)
+                        </label>
+                        <input
+                            id="duration_minutes"
+                            v-model="durationMinutes"
+                            type="number"
+                            min="1"
+                            max="1440"
+                            placeholder="60"
+                            class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                        />
+                        <p v-if="formErrors.duration_minutes" class="text-sm text-red-400 mt-1">
+                            {{ formErrors.duration_minutes[0] }}
                         </p>
                     </div>
 
@@ -324,18 +376,24 @@ function formatDate(iso: string | null): string {
                 </div>
             </section>
 
-            <section class="space-y-3">
-                <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wide">Upcoming</h2>
-                <p v-if="!upcoming.length" class="text-sm text-neutral-500">No upcoming meetings.</p>
+            <section v-for="group in [
+                { label: 'Today', items: today, empty: 'No meetings scheduled for today.' },
+                { label: 'Tomorrow', items: tomorrow, empty: 'No meetings scheduled for tomorrow.' },
+                { label: 'Upcoming', items: upcoming, empty: 'No later meetings scheduled.' },
+            ]" :key="group.label" class="space-y-3">
+                <h2 class="text-sm font-medium text-neutral-400 uppercase tracking-wide">{{ group.label }}</h2>
+                <p v-if="!group.items.length" class="text-sm text-neutral-500">{{ group.empty }}</p>
                 <div
-                    v-for="meeting in upcoming"
+                    v-for="meeting in group.items"
                     :key="meeting.id"
                     class="border border-neutral-800 rounded-md p-4 flex items-center justify-between gap-4"
                 >
                     <div>
                         <p class="font-medium">{{ meeting.title }}</p>
                         <p class="text-xs text-neutral-400 mt-1">
-                            {{ formatDate(meeting.scheduled_at) }} · Code: {{ meeting.meeting_code }}
+                            {{ formatDate(meeting.scheduled_at) }}
+                            <template v-if="formatDuration(meeting.duration_minutes)"> · {{ formatDuration(meeting.duration_minutes) }}</template>
+                            · Code: {{ meeting.meeting_code }}
                         </p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">

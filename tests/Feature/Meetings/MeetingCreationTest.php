@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Meetings;
 
+use App\Events\MeetingScheduled;
 use App\Models\Meeting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -51,6 +53,59 @@ class MeetingCreationTest extends TestCase
         $meeting = Meeting::where('title', 'Confidential Review')->firstOrFail();
         $this->assertNotSame('secret123', $meeting->getRawOriginal('password'));
         $this->assertTrue(Hash::check('secret123', $meeting->getRawOriginal('password')));
+    }
+
+    public function test_a_meeting_can_be_created_with_a_duration(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->postJson('/api/v1/meetings', [
+            'title' => 'Standup',
+            'duration_minutes' => 30,
+        ]);
+
+        $response->assertStatus(201)->assertJsonPath('data.duration_minutes', 30);
+        $this->assertDatabaseHas('meetings', ['title' => 'Standup', 'duration_minutes' => 30]);
+    }
+
+    public function test_duration_minutes_must_be_a_positive_integer_within_a_day(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson('/api/v1/meetings', [
+            'title' => 'Bad duration',
+            'duration_minutes' => 0,
+        ])->assertStatus(422)->assertJsonValidationErrors('duration_minutes');
+
+        $this->actingAs($user)->postJson('/api/v1/meetings', [
+            'title' => 'Bad duration',
+            'duration_minutes' => 1441,
+        ])->assertStatus(422)->assertJsonValidationErrors('duration_minutes');
+    }
+
+    public function test_creating_a_scheduled_meeting_dispatches_a_meeting_scheduled_event(): void
+    {
+        Event::fake([MeetingScheduled::class]);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson('/api/v1/meetings', [
+            'title' => 'Future sync',
+            'scheduled_at' => now()->addDay()->toISOString(),
+        ])->assertStatus(201);
+
+        Event::assertDispatched(MeetingScheduled::class, fn (MeetingScheduled $event) => $event->meeting->title === 'Future sync');
+    }
+
+    public function test_creating_an_instant_meeting_does_not_dispatch_a_meeting_scheduled_event(): void
+    {
+        Event::fake([MeetingScheduled::class]);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson('/api/v1/meetings', [
+            'title' => 'Instant call',
+        ])->assertStatus(201);
+
+        Event::assertNotDispatched(MeetingScheduled::class);
     }
 
     public function test_a_guest_cannot_create_a_meeting(): void

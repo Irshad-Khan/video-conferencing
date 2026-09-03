@@ -21,6 +21,7 @@ class UpdateMeetingRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'password' => ['nullable', 'string', 'min:4', 'max:255'],
             'scheduled_at' => ['nullable', 'date', 'after_or_equal:now'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'waiting_room_enabled' => ['sometimes', 'boolean'],
             'allow_guests' => ['sometimes', 'boolean'],
         ];

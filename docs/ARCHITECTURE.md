@@ -32,6 +32,10 @@ Client A ◀════ WebRTC (SRTP) ════▶ Client B    (audio/video/
 
 Single Laravel repo serves Blade entry + Vue SPA bundle via Vite, keeping Docker Compose topology simple for MVP while the `/api/v1` surface stays fully separable — a future mobile app or a split frontend deployment needs no backend changes, only a different client consuming the same versioned API.
 
+## Notifications
+
+No email/SMS notifications ship in the MVP (see [ROADMAP.md](ROADMAP.md) §16). The architecture is kept extensible for them without a backend rewrite: creating a meeting with a future `scheduled_at` dispatches `App\Events\MeetingScheduled` (a plain Laravel event, not broadcast over Reverb — this is server-side only, unrelated to the client-facing signaling events). No listener is registered on it today. Adding reminder emails/SMS later means writing a listener (e.g. queued via Redis, consistent with the existing queue driver) and registering it — no change to `MeetingController` or any other call site.
+
 ## Directory Structure
 
 Standard Laravel layout (see project root) plus:

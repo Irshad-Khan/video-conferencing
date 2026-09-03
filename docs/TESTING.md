@@ -257,3 +257,18 @@ Verified 2026-09-03, mcsirshad95@gmail.com.
 | TC-P11-06 | Live per-meeting toggle | Disabling the waiting room mid-meeting via the host toolbar takes effect immediately: the next guest to join goes straight into the room, no waiting screen at all | PASS |
 
 Driven the same way as Phase 7–10: real headless Chrome over CDP, three independent profiles this run (host, an authenticated participant, and a true anonymous guest) — the guest specifically needed its own Chrome profile rather than reusing the authenticated participant's, since Chrome shares cookies across tabs within one profile and a "guest" tab sharing a profile with a signed-in user would silently join as that user instead of anonymously. Asserted on live DOM state (waiting-room panel content, badge counts, the participant's own screen transitioning without any click on their end) rather than only HTTP responses. No new application bugs were found during this pass.
+
+## Phase 12 Verification Checklist (Scheduling)
+
+Verified 2026-09-03, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P12-00 | Automated suite | `php artisan test` passes | PASS (116/116 tests, 357 assertions — adds 4 cases to `MeetingCreationTest.php`) |
+| TC-P12-01 | Duration persists and displays | Creating a meeting with `duration_minutes` (e.g. 90) persists it and the dashboard shows it formatted (e.g. "1h 30m"); editing an existing meeting pre-fills the field | PASS |
+| TC-P12-02 | Duration bounds enforced server-side | `duration_minutes` outside 1-1440 is rejected `422` with a field-specific error, independent of the client-side `min`/`max` on the `<input type="number">` (verified by disabling native HTML5 validation and hitting the API directly) | PASS |
+| TC-P12-03 | Dashboard groups into Today/Tomorrow/Upcoming/Past | A meeting scheduled today lands under "Today" (along with any instant meeting with no `scheduled_at`, since it's meant to start immediately); tomorrow's date under "Tomorrow"; anything later under "Upcoming"; ended/cancelled meetings stay under "Past", unchanged from Phase 3. Sections render in that fixed order regardless of which groups are empty | PASS |
+| TC-P12-04 | "Live now" unaffected by regrouping | The existing Phase 3 "Live now" section (a status, not a date group) still renders above the date-grouped sections and is unaffected by this phase's changes | PASS (unchanged code path, not re-verified live this pass — no live meeting was part of this test run) |
+| TC-P12-05 | `MeetingScheduled` event | Creating a meeting with a future `scheduled_at` dispatches `App\Events\MeetingScheduled`; an instant meeting (no `scheduled_at`) does not | PASS (asserted via `Event::fake()` in the automated suite; this is a server-side extension point with no listener yet, so there's nothing further to observe live — see [ARCHITECTURE.md](ARCHITECTURE.md#notifications)) |
+
+Driven via a single real headless Chrome profile over CDP (no multi-party signaling involved — this phase is dashboard-only). Registered a fresh host, created four meetings (today/tomorrow/+5 days/instant) with distinct durations, and asserted on live DOM state: section headings and their order, which meeting landed in which section, the formatted duration text, the edit form's pre-filled value, and the inline validation error text for an out-of-bounds duration. One test-harness gotcha hit along the way: the section `<h2>` headings carry a CSS `uppercase` text-transform, which `element.innerText` (unlike `textContent`) reflects — the verification script's string matches had to target the transformed case. No application bugs were found during this pass.

@@ -52,7 +52,7 @@ Response: `200 {"data": [{...meeting}]}`.
 
 Creates a meeting. `meeting_uuid` and a unique `meeting_code` (e.g. `ABC-123-XYZ`) are generated server-side; the meeting starts in `scheduled` status.
 
-Request: `{"title", "description"?, "password"?, "scheduled_at"?, "waiting_room_enabled"?, "allow_guests"?}` (`scheduled_at` omitted = instant meeting, started on demand via `/start`).
+Request: `{"title", "description"?, "password"?, "scheduled_at"?, "duration_minutes"?, "waiting_room_enabled"?, "allow_guests"?}` (`scheduled_at` omitted = instant meeting, started on demand via `/start`; `duration_minutes` is informational only, 1-1440, shown on the dashboard — nothing auto-ends the meeting when it elapses). Creating a meeting with a future `scheduled_at` dispatches `App\Events\MeetingScheduled` server-side (not broadcast over Reverb — a plain Laravel event); no listeners are registered on it yet, since the MVP ships no email/SMS notifications, but it's the extension point a future reminder feature would hook into without touching this controller. See [ARCHITECTURE.md](ARCHITECTURE.md#notifications).
 Response: `201 {"data": {...meeting}}`.
 
 ### `GET /api/v1/meetings/{meeting}`

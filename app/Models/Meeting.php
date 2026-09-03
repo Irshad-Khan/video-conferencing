@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['title', 'description', 'password', 'scheduled_at', 'waiting_room_enabled', 'allow_guests'])]
+#[Fillable(['title', 'description', 'password', 'scheduled_at', 'duration_minutes', 'waiting_room_enabled', 'allow_guests'])]
 #[Hidden(['password'])]
 #[Appends(['has_password'])]
 #[RouteKey('meeting_uuid')]
@@ -70,6 +70,7 @@ class Meeting extends Model
             'allow_guests' => 'boolean',
             'is_locked' => 'boolean',
             'scheduled_at' => 'datetime',
+            'duration_minutes' => 'integer',
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
         ];

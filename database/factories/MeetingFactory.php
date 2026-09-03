@@ -24,6 +24,7 @@ class MeetingFactory extends Factory
             'description' => fake()->optional()->paragraph(),
             'status' => Meeting::STATUS_SCHEDULED,
             'scheduled_at' => fake()->dateTimeBetween('now', '+1 week'),
+            'duration_minutes' => fake()->optional()->randomElement([15, 30, 45, 60, 90, 120]),
         ];
     }
 
