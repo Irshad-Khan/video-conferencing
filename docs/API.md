@@ -86,6 +86,30 @@ Response: `200 {"data": {...meeting}}`, or `409` if not currently `live`.
 Transitions `scheduled` → `cancelled`.
 Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
 
+## Meeting Controls (Host)
+
+All endpoints below require `auth:sanctum` and are host-only (`MeetingPolicy::manageSettings`/`manageParticipants`; a non-host gets `403`). Meetings are addressed by `meeting_uuid`. Every mutating action broadcasts an `App\Events\HostControlEvent` on the meeting's Reverb channel as `.host.control` so connected clients react in real time — see [WEBRTC.md](WEBRTC.md#host-control-signaling).
+
+### `POST /api/v1/meetings/{meeting}/lock` / `POST /api/v1/meetings/{meeting}/unlock`
+
+Toggles `is_locked`. While locked, `POST .../join` rejects any non-host joiner with `403` (already-connected participants are unaffected).
+Response: `200 {"data": {...meeting}}`.
+
+### `POST /api/v1/meetings/{meeting}/guests/enable` / `POST /api/v1/meetings/{meeting}/guests/disable`
+
+Toggles `allow_guests` live.
+Response: `200 {"data": {...meeting}}`.
+
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/mute`
+
+Force-mutes a participant currently in the call (broadcasts `action: mute` with the participant's `presenceId()` as `target`; the target's own client disables its mic).
+Response: `200 {"data": {"muted": true}}`, or `409` if the participant isn't currently `joined`, or `404` if `{participant}` doesn't belong to `{meeting}`.
+
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/remove`
+
+Sets the participant's `status` to `removed` and disconnects them in real time.
+Response: `200 {"data": {...participant}}`, or `409` if the target is the host or has already left/been removed, or `404` if `{participant}` doesn't belong to `{meeting}`.
+
 ## Joining a Meeting
 
 These endpoints are public (no `auth:sanctum` required) so both authenticated users and guests can join. Meetings are addressed by `meeting_code` (the short human-friendly code, e.g. `ABC-123-XYZ`), not `meeting_uuid`.
@@ -109,6 +133,22 @@ Errors: `404` unknown code; `409` meeting is `ended`/`cancelled`; `422` wrong pa
 Public. Authenticated users are matched by session; guests must pass `{"guest_token": "..."}` (the value returned from `/join`). Sets the participant's `status` to `left` and records `left_at`.
 Response: `200 {"data": {...participant}}`, or `404` if no matching participant/guest-token is found.
 
+## Chat
+
+Public (no `auth:sanctum` required, so guests can participate), but every endpoint requires the caller to currently be an active (`joined`/`admitted`) participant of the meeting — the same rule `routes/channels.php` uses to authorize the Reverb channel. Authenticated users are matched by session; guests must pass `guest_token` (the value returned from `/join`) as a query param on `GET` or a body field on `POST`. Meetings are addressed by `meeting_code`. Sending a message broadcasts `App\Events\ChatMessageEvent` on the meeting's Reverb channel as `.chat.message`; messages are persisted (`meeting_messages` table) and never pre-rendered as HTML server-side — escaping for safe display is the frontend's job (Vue's default `{{ }}` interpolation), not the API's.
+
+### `GET /api/v1/meetings/{code}/messages`
+
+Returns the full message history in chronological order.
+Response: `200 {"data": [{"id", "message", "sender_name", "sender_role", "presence_id", "created_at"}]}`, or `403` if the caller isn't currently an active participant, or `404` for an unknown code.
+
+### `POST /api/v1/meetings/{code}/messages`
+
+Rate-limited (30/min). Sends a message; `message` is required, trimmed server-side, and capped at 2000 characters (whitespace-only is rejected as empty).
+
+Request: `{"message", "guest_token"?}`
+Response: `201 {"data": {...message}}` (same shape as a list entry), `422` for an empty/oversized message, `403` if the caller isn't currently an active participant, or `404` for an unknown code.
+
 ## WebRTC Signaling
 
 ### `POST /broadcasting/auth`
@@ -125,4 +165,4 @@ Public. `200 {"status": "ok"}`. Used for container/infra health checks (see [DEP
 
 ---
 
-Chat and admin endpoints are documented here as they're implemented in later phases (see [ROADMAP.md](ROADMAP.md) §11).
+Admin endpoints are documented here once implemented (see [ROADMAP.md](ROADMAP.md) §11, Phase 15).

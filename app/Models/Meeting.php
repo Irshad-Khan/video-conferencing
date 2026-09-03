@@ -97,4 +97,12 @@ class Meeting extends Model
     {
         return $this->hasMany(MeetingParticipant::class);
     }
+
+    /**
+     * @return HasMany<MeetingMessage, $this>
+     */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(MeetingMessage::class);
+    }
 }

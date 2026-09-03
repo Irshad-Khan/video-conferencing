@@ -85,3 +85,12 @@ export interface MediaStatePayload {
     camera: boolean;
     screenSharing?: boolean;
 }
+
+export interface ChatMessage {
+    id: number;
+    message: string;
+    sender_name: string;
+    sender_role: ParticipantRole | null;
+    presence_id: string | null;
+    created_at: string;
+}

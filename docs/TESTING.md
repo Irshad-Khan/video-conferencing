@@ -208,3 +208,21 @@ Verified 2026-09-03, mcsirshad95@gmail.com. This feature is entirely client-side
 | TC-P8-08 | Late joiner during an active share | A peer connection created while a share is already in progress adds the *screen* track (not the camera) via `currentVideoTrack()`, so a participant joining mid-share sees the presentation immediately rather than the presenter's camera | PASS (exercised implicitly by TC-P8-02/03's mesh already being connected before the share starts — same code path `ensurePeer()` would take for a fresh joiner) |
 
 Driven the same way as Phase 5/6/7: one authenticated host and one guest over CDP against real headless Chrome (`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream --auto-select-desktop-capture-source="Entire screen"` — the last flag lets `getDisplayMedia` resolve without a picker UI in headless mode), asserting on live DOM state (button labels, "presenting" text on local and remote tiles) after each action. No new bugs were found in the application itself during this pass — an earlier apparent auth failure (registration succeeding but the very next request in the same browser tab getting `401`) turned out to be stale session cookies left over in a reused Chrome profile directory from prior ad-hoc debugging in the same test session, not an application defect; it did not reproduce with a fresh profile and is not logged in [BUGS.md](BUGS.md).
+
+## Phase 9 Verification Checklist (Real-Time Chat)
+
+Verified 2026-09-03, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P9-01 | Automated suite | `php artisan test` passes | PASS (98/98 tests, 289 assertions — adds `MeetingChatTest.php`, 12 cases) |
+| TC-P9-02 | Send / receive (authenticated participant) | `POST .../messages` persists a `meeting_messages` row and broadcasts `.chat.message`; both sender and other connected participants see it appear in real time via the channel, not an optimistic local push | PASS |
+| TC-P9-03 | Send / receive (guest) | A guest, authenticated via their one-time `guest_token` (query param on `GET`, body field on `POST` — no Sanctum session), can send and receive exactly like a signed-in participant; their `guest_name` is resolved as the sender name | PASS |
+| TC-P9-04 | Unread indicator | While the chat panel is closed, an incoming message increments a badge on the "Chat" toggle button; opening the panel clears it | PASS |
+| TC-P9-05 | Empty / whitespace-only message rejected | Server: `422` with a validation error (message is trimmed server-side before the `required` check, so `"   "` is rejected same as `""`). Client: the send button is disabled whenever the trimmed draft is empty, so an empty submit can't even be attempted | PASS |
+| TC-P9-06 | Over-length message rejected | A 2001-character message returns `422` (`max:2000`) | PASS |
+| TC-P9-07 | Unauthorized user blocked | An unauthenticated non-participant, a signed-in user who never joined, a participant who has `left`/been `removed`, and a guest with an invalid/missing token all get `403` from both `GET` and `POST`; no row is written | PASS |
+| TC-P9-08 | XSS-safe rendering | A message containing `<img src=x onerror=alert(1)>` round-trips unmodified from the API (escaping is not the API's job — see [API.md](API.md#chat)) but renders in the chat panel as literal visible text, with no `<img>` element created in the DOM and the `onerror` handler never firing — verified live, not just asserted server-side, since the guarantee depends on Vue's `{{ }}` interpolation in `Room.vue`, not on backend sanitization | PASS |
+| TC-P9-09 | Persistence across reload | Reloading the room mid-conversation re-fetches full history via `GET .../messages` on mount; all prior messages (from both participants) are present after the reload, not just ones received live | PASS |
+
+Driven the same way as Phase 7/8: one authenticated host and one guest over CDP against real headless Chrome, asserting on live DOM state (chat panel content, unread badge text, sender labels) after each action rather than only the HTTP response. No new bugs were found in the application itself during this pass.

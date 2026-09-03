@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { HostControlPayload, JoinMeetingResponse, MediaStatePayload } from '../types';
+import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -45,6 +45,12 @@ const screenSharing = ref(false);
 const screenShareBusy = ref(false);
 const screenShareError = ref('');
 const screenShareSupported = !!navigator.mediaDevices?.getDisplayMedia;
+const chatOpen = ref(false);
+const chatMessages = ref<ChatMessage[]>([]);
+const chatDraft = ref('');
+const chatError = ref('');
+const chatSending = ref(false);
+const unreadCount = ref(0);
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
@@ -165,6 +171,12 @@ function attachSignalingListeners(): void {
         })
         .listen('.host.control', (payload: HostControlPayload) => {
             handleHostControl(payload);
+        })
+        .listen('.chat.message', (payload: ChatMessage) => {
+            chatMessages.value.push(payload);
+            if (!chatOpen.value) {
+                unreadCount.value += 1;
+            }
         });
 }
 
@@ -266,6 +278,8 @@ onMounted(async () => {
         .error(() => {
             error.value = 'Could not connect to the meeting room. Please try again.';
         });
+
+    void loadChatHistory();
 });
 
 onBeforeUnmount(() => {
@@ -353,6 +367,47 @@ async function leaveRoom(): Promise<void> {
     sessionStorage.removeItem(joinDataKey);
     sessionStorage.removeItem(guestTokenKey);
     router.push({ name: 'join', params: { code } });
+}
+
+async function loadChatHistory(): Promise<void> {
+    const guestToken = sessionStorage.getItem(guestTokenKey);
+
+    try {
+        const { data } = await api.get<{ data: ChatMessage[] }>(`/meetings/${code}/messages`, {
+            params: guestToken ? { guest_token: guestToken } : {},
+        });
+        chatMessages.value = data.data;
+    } catch {
+        // chat history is a nice-to-have on entry — the live channel still delivers new messages either way
+    }
+}
+
+function toggleChat(): void {
+    chatOpen.value = !chatOpen.value;
+    if (chatOpen.value) {
+        unreadCount.value = 0;
+    }
+}
+
+async function sendChatMessage(): Promise<void> {
+    const text = chatDraft.value.trim();
+    if (!text || chatSending.value) return;
+
+    chatSending.value = true;
+    chatError.value = '';
+    const guestToken = sessionStorage.getItem(guestTokenKey);
+
+    try {
+        await api.post(`/meetings/${code}/messages`, {
+            message: text,
+            ...(guestToken ? { guest_token: guestToken } : {}),
+        });
+        chatDraft.value = '';
+    } catch {
+        chatError.value = 'Could not send your message. Please try again.';
+    } finally {
+        chatSending.value = false;
+    }
 }
 
 async function toggleLock(): Promise<void> {
@@ -490,54 +545,90 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 </button>
             </div>
 
-            <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
-                <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
-                    <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
-                    <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
-                        You
-                        <span v-if="!micOn">· muted</span>
-                        <span v-if="!cameraOn">· camera off</span>
-                        <span v-if="screenSharing">· presenting</span>
+            <div class="flex-1 flex min-h-0">
+                <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
+                    <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
+                        <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                        <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
+                            You
+                            <span v-if="!micOn">· muted</span>
+                            <span v-if="!cameraOn">· camera off</span>
+                            <span v-if="screenSharing">· presenting</span>
+                        </div>
+                    </div>
+
+                    <div v-for="peer in peers" :key="peer.id" class="relative bg-neutral-900 rounded-lg overflow-hidden">
+                        <video
+                            v-if="peer.stream"
+                            :ref="(el) => setPeerVideoEl(peer.id, el)"
+                            autoplay
+                            playsinline
+                            class="w-full h-full object-cover"
+                        ></video>
+                        <div v-else class="w-full h-full flex items-center justify-center text-sm text-neutral-500">
+                            {{ peer.state === 'connecting' ? 'Connecting…' : peer.state }}
+                        </div>
+                        <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
+                            {{ peer.name }}
+                            <span v-if="!peer.micOn">· muted</span>
+                            <span v-if="!peer.cameraOn">· camera off</span>
+                            <span v-if="peer.screenSharing">· presenting</span>
+                            <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
+                        </div>
+                        <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
+                            <button
+                                type="button"
+                                :disabled="hostActionBusy"
+                                class="text-xs bg-black/60 hover:bg-black/80 rounded px-2 py-1 disabled:opacity-50"
+                                @click="muteParticipant(peer)"
+                            >
+                                Mute
+                            </button>
+                            <button
+                                type="button"
+                                :disabled="hostActionBusy"
+                                class="text-xs bg-black/60 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                @click="removeParticipant(peer)"
+                            >
+                                Remove
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div v-for="peer in peers" :key="peer.id" class="relative bg-neutral-900 rounded-lg overflow-hidden">
-                    <video
-                        v-if="peer.stream"
-                        :ref="(el) => setPeerVideoEl(peer.id, el)"
-                        autoplay
-                        playsinline
-                        class="w-full h-full object-cover"
-                    ></video>
-                    <div v-else class="w-full h-full flex items-center justify-center text-sm text-neutral-500">
-                        {{ peer.state === 'connecting' ? 'Connecting…' : peer.state }}
+                <aside v-if="chatOpen" class="w-80 shrink-0 border-l border-neutral-800 flex flex-col">
+                    <div class="px-3 py-2 border-b border-neutral-800 text-sm font-medium flex items-center justify-between">
+                        Chat
+                        <button type="button" class="text-neutral-400 hover:text-neutral-200 text-xs" @click="toggleChat">Close</button>
                     </div>
-                    <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
-                        {{ peer.name }}
-                        <span v-if="!peer.micOn">· muted</span>
-                        <span v-if="!peer.cameraOn">· camera off</span>
-                        <span v-if="peer.screenSharing">· presenting</span>
-                        <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
+                    <div class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+                        <p v-if="!chatMessages.length" class="text-xs text-neutral-500">No messages yet.</p>
+                        <div v-for="msg in chatMessages" :key="msg.id">
+                            <div class="text-xs text-neutral-400 flex items-center gap-1">
+                                <span class="font-medium text-neutral-300">{{ msg.presence_id === myId ? 'You' : msg.sender_name }}</span>
+                                <span>{{ new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
+                            </div>
+                            <p class="text-sm text-neutral-100 break-words whitespace-pre-wrap">{{ msg.message }}</p>
+                        </div>
                     </div>
-                    <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
+                    <p v-if="chatError" class="text-xs text-red-400 px-3">{{ chatError }}</p>
+                    <form class="p-3 border-t border-neutral-800 flex items-center gap-2" @submit.prevent="sendChatMessage">
+                        <input
+                            v-model="chatDraft"
+                            type="text"
+                            maxlength="2000"
+                            placeholder="Message everyone"
+                            class="flex-1 rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                        />
                         <button
-                            type="button"
-                            :disabled="hostActionBusy"
-                            class="text-xs bg-black/60 hover:bg-black/80 rounded px-2 py-1 disabled:opacity-50"
-                            @click="muteParticipant(peer)"
+                            type="submit"
+                            :disabled="chatSending || !chatDraft.trim()"
+                            class="rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium px-3 py-2 disabled:opacity-50"
                         >
-                            Mute
+                            Send
                         </button>
-                        <button
-                            type="button"
-                            :disabled="hostActionBusy"
-                            class="text-xs bg-black/60 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
-                            @click="removeParticipant(peer)"
-                        >
-                            Remove
-                        </button>
-                    </div>
-                </div>
+                    </form>
+                </aside>
             </div>
 
             <div class="flex items-center justify-center gap-3 p-4 border-t border-neutral-800">
@@ -566,6 +657,20 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="screenSharing ? stopScreenShare() : startScreenShare()"
                 >
                     {{ screenSharing ? 'Stop sharing' : 'Share screen' }}
+                </button>
+                <button
+                    type="button"
+                    class="relative rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
+                    :class="chatOpen ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"
+                    @click="toggleChat"
+                >
+                    Chat
+                    <span
+                        v-if="unreadCount > 0"
+                        class="absolute -top-1.5 -right-1.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-red-600 text-white text-[10px] leading-[1.1rem]"
+                    >
+                        {{ unreadCount }}
+                    </span>
                 </button>
                 <button type="button" class="rounded-full px-4 py-2 text-sm font-medium bg-red-700" @click="leaveRoom">
                     Leave

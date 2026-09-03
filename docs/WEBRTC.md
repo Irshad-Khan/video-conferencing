@@ -47,6 +47,14 @@ Unlike every other signaling message on `meeting.{uuid}` (roster, offer/answer, 
 - `lock`ing a meeting is enforced server-side in `MeetingJoinController::join()` (rejects any non-host join with `403` while `is_locked`); it does not affect participants already connected.
 - Server-to-Reverb publishing needs Reverb's Docker-internal address (`REVERB_SERVER_HOST`/`REVERB_SERVER_PORT`, defaulting to `reverb:8080`), not the browser-facing `REVERB_HOST`/`REVERB_PORT` (`localhost:8301`) that `config/broadcasting.php`'s reverb connection used exclusively before Phase 7 — see BUG-009 in [BUGS.md](BUGS.md). This had no effect on Phase 5/6, since all of that signaling is client whispers and never calls `broadcast()`.
 
+## Chat Signaling
+
+Chat (Phase 9) reuses the same `App\Events\...implements ShouldBroadcastNow` + `private-meeting.{meeting_uuid}` pattern as host control, for the same underlying reason: persistence and real-time fan-out both need the server as the source of truth, not a client whisper the sender's own tab might fail to send. `App\Events\ChatMessageEvent` is dispatched from `MeetingMessageController::store()` once the message is persisted to `meeting_messages`, broadcasting as `.chat.message` with `{ id, message, sender_name, sender_role, presence_id, created_at }`.
+
+- Like host control, there is no `toOthers()` — the sender's own tab receives its own message back over the channel rather than pushing it into the local message list optimistically, so there is exactly one code path for "a message appeared," matching the lock/guests-toggle precedent that avoids double-render/race bugs (see BUG-010 in [BUGS.md](BUGS.md)).
+- Unlike WebRTC signaling and host control, chat is also reachable without an active Echo subscription: `GET /meetings/{code}/messages` (participant-gated the same way as the channel itself) returns full history, which `Room.vue` loads once on mount so a participant who joins mid-conversation sees prior messages, not just what arrives live afterward.
+- Rendering safety is entirely the frontend's responsibility: the API stores and returns the message text verbatim (see [API.md](API.md#chat)), and `Room.vue` renders it through Vue's default `{{ }}` mustache interpolation, which HTML-escapes automatically — the message is never passed through `v-html`.
+
 ## STUN / TURN
 
 - WebRTC needs STUN at minimum to discover public-facing candidates; it needs **TURN** whenever both peers are behind NAT that blocks direct/STUN connectivity (common on restrictive corporate/mobile networks).

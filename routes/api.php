@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\Auth\RegisteredUserController;
 use App\Http\Controllers\Api\V1\MeetingControlController;
 use App\Http\Controllers\Api\V1\MeetingController;
 use App\Http\Controllers\Api\V1\MeetingJoinController;
+use App\Http\Controllers\Api\V1\MeetingMessageController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/meetings/{code}/join', [MeetingJoinController::class, 'join'])
         ->middleware('throttle:20,1');
     Route::post('/meetings/{code}/leave', [MeetingJoinController::class, 'leave']);
+
+    Route::get('/meetings/{code}/messages', [MeetingMessageController::class, 'index']);
+    Route::post('/meetings/{code}/messages', [MeetingMessageController::class, 'store'])
+        ->middleware('throttle:30,1');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthenticatedSessionController::class, 'destroy']);

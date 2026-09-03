@@ -24,9 +24,9 @@ Never trust client-supplied `user_id`, `role`, `host_id`, `meeting_id`, or `perm
 ## Web-Layer Protections
 
 - CSRF: Laravel's default protection on stateful (cookie-session) routes.
-- XSS: Vue's default text interpolation escapes output; chat messages are never rendered via `v-html`. Server additionally strips/escapes on store as defense in depth.
+- XSS: Vue's default text interpolation escapes output; chat messages are never rendered via `v-html`. The API stores and returns message text verbatim (see [DATABASE.md](DATABASE.md#meeting_messages)) rather than stripping/escaping server-side — escaping belongs at the render boundary, and stripping tags server-side would corrupt legitimate message content (e.g. `5 < 10`) without adding any protection Vue's interpolation doesn't already provide.
 - SQL injection: Eloquent/query builder parameter binding exclusively — no raw string-interpolated queries.
-- Rate limiting: Laravel's throttle middleware on `/api/v1/auth/*` (login/register) and on meeting-join endpoints to slow brute-force meeting-code/password guessing.
+- Rate limiting: Laravel's throttle middleware on `/api/v1/auth/*` (login/register), meeting-join endpoints, and chat message sending (30/min) to slow brute-force meeting-code/password guessing and chat spam.
 
 ## Transport
 
