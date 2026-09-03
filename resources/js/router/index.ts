@@ -37,6 +37,12 @@ const router = createRouter({
             component: () => import('../pages/Room.vue'),
         },
         {
+            path: '/history',
+            name: 'history',
+            component: () => import('../pages/History.vue'),
+            meta: { requiresAuth: true },
+        },
+        {
             path: '/profile',
             name: 'profile',
             component: () => import('../pages/Profile.vue'),

@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMeetingRequest;
 use App\Http\Requests\UpdateMeetingRequest;
 use App\Models\Meeting;
+use App\Models\MeetingParticipant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -120,8 +121,44 @@ class MeetingController extends Controller
             'ended_at' => now(),
         ])->save();
 
+        // Anyone still present (or still waiting) never called /leave themselves — most
+        // will have just been disconnected client-side by the broadcast below, some may
+        // have silently dropped earlier. Finalize their records now so the meeting's
+        // history is complete and durations are accurate, instead of leaving them stuck
+        // with a null left_at forever.
+        $meeting->participants()
+            ->whereIn('status', [
+                MeetingParticipant::STATUS_JOINED,
+                MeetingParticipant::STATUS_ADMITTED,
+                MeetingParticipant::STATUS_WAITING,
+            ])
+            ->get()
+            ->each(fn (MeetingParticipant $participant) => $participant->endSession(MeetingParticipant::STATUS_LEFT));
+
         broadcast(new HostControlEvent($meeting, 'end'));
 
         return response()->json(['data' => $meeting]);
+    }
+
+    public function participants(Meeting $meeting): JsonResponse
+    {
+        Gate::authorize('view', $meeting);
+
+        $participants = $meeting->participants()
+            ->with('user:id,name')
+            ->orderBy('joined_at')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (MeetingParticipant $participant) => [
+                'id' => $participant->id,
+                'name' => $participant->guest_name ?? $participant->user?->name,
+                'role' => $participant->role,
+                'status' => $participant->status,
+                'joined_at' => $participant->joined_at,
+                'left_at' => $participant->left_at,
+                'duration_seconds' => $participant->duration_seconds,
+            ]);
+
+        return response()->json(['data' => $participants]);
     }
 }

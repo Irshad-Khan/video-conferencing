@@ -156,7 +156,7 @@ class MeetingJoinController extends Controller
 
         $wasWaiting = $participant->status === MeetingParticipant::STATUS_WAITING;
 
-        $participant->forceFill(['status' => MeetingParticipant::STATUS_LEFT, 'left_at' => now()])->save();
+        $participant->endSession(MeetingParticipant::STATUS_LEFT);
 
         if ($wasWaiting) {
             broadcast(new WaitingRoomEvent($meeting, 'participant-left-waiting', ['id' => $participant->id]));

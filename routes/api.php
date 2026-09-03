@@ -35,6 +35,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/meetings', [MeetingController::class, 'index']);
         Route::post('/meetings', [MeetingController::class, 'store']);
         Route::get('/meetings/{meeting}', [MeetingController::class, 'show']);
+        Route::get('/meetings/{meeting}/participants', [MeetingController::class, 'participants']);
         Route::put('/meetings/{meeting}', [MeetingController::class, 'update']);
         Route::delete('/meetings/{meeting}', [MeetingController::class, 'destroy']);
         Route::post('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);

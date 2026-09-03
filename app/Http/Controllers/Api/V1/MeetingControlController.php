@@ -120,7 +120,7 @@ class MeetingControlController extends Controller
             return response()->json(['message' => 'This participant is not currently waiting.'], 409);
         }
 
-        $participant->forceFill(['status' => MeetingParticipant::STATUS_REJECTED, 'left_at' => now()])->save();
+        $participant->endSession(MeetingParticipant::STATUS_REJECTED);
 
         broadcast(new WaitingRoomEvent(
             $meeting,
@@ -159,7 +159,7 @@ class MeetingControlController extends Controller
             return response()->json(['message' => 'This participant has already left the meeting.'], 409);
         }
 
-        $participant->forceFill(['status' => MeetingParticipant::STATUS_REMOVED, 'left_at' => now()])->save();
+        $participant->endSession(MeetingParticipant::STATUS_REMOVED);
         broadcast(new HostControlEvent($meeting, 'remove', ['target' => $participant->presenceId()]));
 
         return response()->json(['data' => $participant]);

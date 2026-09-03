@@ -42,7 +42,25 @@ class MeetingParticipant extends Model
             'joined_at' => 'datetime',
             'left_at' => 'datetime',
             'admitted_at' => 'datetime',
+            'duration_seconds' => 'integer',
         ];
+    }
+
+    /**
+     * Move this participant to a terminal status, recording when they left and — if
+     * they were actually in the call (`joined_at` set) — adding this session's length
+     * to their running `duration_seconds` total. Reconnects reuse the same row, so this
+     * accumulates across multiple join/leave cycles rather than only keeping the last one.
+     */
+    public function endSession(string $status): void
+    {
+        $attributes = ['status' => $status, 'left_at' => now()];
+
+        if ($this->joined_at !== null) {
+            $attributes['duration_seconds'] = $this->duration_seconds + $this->joined_at->diffInSeconds(now());
+        }
+
+        $this->forceFill($attributes)->save();
     }
 
     /**

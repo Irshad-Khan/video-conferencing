@@ -59,6 +59,12 @@ Response: `201 {"data": {...meeting}}`.
 
 Response: `200 {"data": {...meeting}}`, or `403` if the authenticated user isn't the host.
 
+### `GET /api/v1/meetings/{meeting}/participants`
+
+The full participant roster of this meeting — every row ever created for it, any status, not just who's currently in the call (see [Meeting Controls](#meeting-controls-host)'s `/participants/waiting` for the currently-waiting subset). Used by the History view (Phase 13) to show who attended a past meeting and for how long; `duration_seconds` is the running total accumulated across every join/leave/reconnect cycle for that participant, added to (not overwritten by) each session — see [DATABASE.md](DATABASE.md#meeting_participants).
+
+Response: `200 {"data": [{"id", "name", "role", "status", "joined_at", "left_at", "duration_seconds"}]}`, ordered by `joined_at` ascending (MySQL sorts `NULL` first, so anyone who never made it past the waiting room lists before everyone who actually joined, tie-broken by `created_at`), or `403` if the authenticated user isn't the host.
+
 ### `PUT /api/v1/meetings/{meeting}`
 
 Edits a meeting. Only allowed while `status = scheduled`.
@@ -78,7 +84,7 @@ Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
 
 ### `POST /api/v1/meetings/{meeting}/end`
 
-Transitions `live` → `ended`, sets `ended_at`.
+Transitions `live` → `ended`, sets `ended_at`. Also finalizes every participant still `joined`/`admitted`/`waiting` at that moment — moves them to `left`, sets `left_at`, and (for anyone who was actually in the call) adds their final session to `duration_seconds` — so the meeting's history record is complete even for participants who never explicitly called `/leave` (Phase 13).
 Response: `200 {"data": {...meeting}}`, or `409` if not currently `live`.
 
 ### `POST /api/v1/meetings/{meeting}/cancel`

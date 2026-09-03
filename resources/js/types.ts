@@ -65,6 +65,17 @@ export interface MeetingParticipant {
     status: ParticipantStatus;
     joined_at: string | null;
     left_at: string | null;
+    duration_seconds: number;
+}
+
+export interface ParticipantHistoryEntry {
+    id: number;
+    name: string | null;
+    role: ParticipantRole;
+    status: ParticipantStatus;
+    joined_at: string | null;
+    left_at: string | null;
+    duration_seconds: number;
 }
 
 export interface JoinMeetingResponse {
