@@ -78,3 +78,10 @@ export interface HostControlPayload {
     action: HostControlAction;
     target?: string;
 }
+
+export interface MediaStatePayload {
+    from: string;
+    mic: boolean;
+    camera: boolean;
+    screenSharing?: boolean;
+}

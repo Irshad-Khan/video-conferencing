@@ -191,10 +191,10 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Tests: participant cannot call host endpoints, removed participant is disconnected, lock/end work — DONE (16 new Feature tests across `MeetingControlsTest.php`, `MeetingControlsAuthorizationTest.php`, plus one added to `MeetingBroadcastAuthTest.php`; "removed participant is disconnected" verified live over CDP, not just via the DB status flip, since that requires the real-time broadcast path)
 
 ### Phase 8 — Screen Sharing
-- [ ] `getDisplayMedia` start/stop
-- [ ] Switch between camera and screen track
-- [ ] Camera restoration after stop
-- [ ] Tests: start/stop, remote receipt, permission-denied handling, unsupported-browser fallback
+- [x] `getDisplayMedia` start/stop — DONE (`startScreenShare()`/`stopScreenShare()` in `Room.vue`; "Share screen"/"Stop sharing" toggle in the control bar)
+- [x] Switch between camera and screen track — DONE (`RTCRtpSender.replaceTrack()` on every existing peer connection's video sender — no renegotiation, no new offer/answer round-trip; a late-joining peer's initial `addTrack` also picks the screen track via `currentVideoTrack()` if a share is already in progress when they connect)
+- [x] Camera restoration after stop — DONE (`stopScreenShare()` replaces the sender's track back to the original camera track; also triggered automatically by the screen track's own `onended` event, so the browser/OS-native "Stop sharing" control — not just our button — correctly restores the camera; also torn down on `leaveRoom()`/`teardown()`)
+- [x] Tests: start/stop, remote receipt, permission-denied handling, unsupported-browser fallback — DONE (all four verified live over CDP with two real headless-Chrome participants — see [TESTING.md](TESTING.md#phase-8-verification-checklist-screen-sharing); "remote receipt" is a `media-state` whisper extended with a `screenSharing` flag so peers show a "presenting" indicator, since `replaceTrack` itself needs no signaling — the swapped video frames arrive over the existing RTP flow with no separate confirmation needed. This feature is entirely client-side WebRTC — no backend routes or Feature tests were added)
 
 ### Phase 9 — Real-Time Chat
 - [ ] `meeting_messages` table
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) complete and verified (2026-09-03); Phase 9 (Real-Time Chat) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

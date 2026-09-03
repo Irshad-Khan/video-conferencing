@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { HostControlPayload, JoinMeetingResponse } from '../types';
+import type { HostControlPayload, JoinMeetingResponse, MediaStatePayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -27,6 +27,7 @@ interface PeerTile {
     state: ConnectionState;
     micOn: boolean;
     cameraOn: boolean;
+    screenSharing: boolean;
 }
 
 const error = ref('');
@@ -40,14 +41,23 @@ const meetingLocked = ref(false);
 const guestsAllowed = ref(true);
 const hostActionError = ref('');
 const hostActionBusy = ref(false);
+const screenSharing = ref(false);
+const screenShareBusy = ref(false);
+const screenShareError = ref('');
+const screenShareSupported = !!navigator.mediaDevices?.getDisplayMedia;
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
+let screenStream: MediaStream | null = null;
 let myId = '';
 let myName = 'Participant';
 let myParticipantId: number | null = null;
 let channel: EchoChannel | null = null;
 const connections: Record<string, RTCPeerConnection> = {};
+
+function currentVideoTrack(): MediaStreamTrack | null {
+    return screenStream?.getVideoTracks()[0] ?? localStream?.getVideoTracks()[0] ?? null;
+}
 
 function iceConfig(): RTCConfiguration {
     return { iceServers: [{ urls: STUN_URLS }] };
@@ -63,11 +73,15 @@ function connectionUiState(state: RTCPeerConnectionState): ConnectionState {
 function ensurePeer(id: string, name: string, participantId: number | null = null): RTCPeerConnection {
     if (connections[id]) return connections[id];
 
-    peers[id] = peers[id] ?? { id, name, participantId, stream: null, state: 'connecting', micOn: true, cameraOn: true };
+    peers[id] = peers[id] ?? { id, name, participantId, stream: null, state: 'connecting', micOn: true, cameraOn: true, screenSharing: false };
 
     const pc = new RTCPeerConnection(iceConfig());
 
-    localStream?.getTracks().forEach((track) => pc.addTrack(track, localStream as MediaStream));
+    localStream?.getAudioTracks().forEach((track) => pc.addTrack(track, localStream as MediaStream));
+    const videoTrack = currentVideoTrack();
+    if (videoTrack) {
+        pc.addTrack(videoTrack, (screenStream ?? localStream) as MediaStream);
+    }
 
     pc.onicecandidate = (event) => {
         if (event.candidate) {
@@ -115,6 +129,7 @@ function attachSignalingListeners(): void {
                 state: 'connecting',
                 micOn: true,
                 cameraOn: true,
+                screenSharing: false,
             };
             void createOfferTo(payload.id, payload.name);
         })
@@ -141,10 +156,11 @@ function attachSignalingListeners(): void {
                 // candidate arrived before/after a renegotiation window closed — harmless, ICE keeps trying others
             }
         })
-        .listenForWhisper('media-state', (payload: { from: string; mic: boolean; camera: boolean }) => {
+        .listenForWhisper('media-state', (payload: MediaStatePayload) => {
             if (peers[payload.from]) {
                 peers[payload.from].micOn = payload.mic;
                 peers[payload.from].cameraOn = payload.camera;
+                peers[payload.from].screenSharing = payload.screenSharing ?? false;
             }
         })
         .listen('.host.control', (payload: HostControlPayload) => {
@@ -158,7 +174,7 @@ function handleHostControl(payload: HostControlPayload): void {
             if (payload.target === myId) {
                 micOn.value = false;
                 localStream?.getAudioTracks().forEach((track) => (track.enabled = false));
-                channel?.whisper('media-state', { from: myId, mic: false, camera: cameraOn.value });
+                channel?.whisper('media-state', { from: myId, mic: false, camera: cameraOn.value, screenSharing: screenSharing.value });
                 notice.value = 'The host muted your microphone.';
             }
             break;
@@ -198,6 +214,8 @@ function handleHostControl(payload: HostControlPayload): void {
 function teardown(): void {
     Object.keys(connections).forEach(teardownPeer);
     localStream?.getTracks().forEach((track) => track.stop());
+    screenStream?.getTracks().forEach((track) => track.stop());
+    screenStream = null;
 
     if (joinData) {
         channel?.whisper('participant.bye', { id: myId });
@@ -257,13 +275,69 @@ onBeforeUnmount(() => {
 function toggleMic(): void {
     micOn.value = !micOn.value;
     localStream?.getAudioTracks().forEach((track) => (track.enabled = micOn.value));
-    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value });
+    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value, screenSharing: screenSharing.value });
 }
 
 function toggleCamera(): void {
     cameraOn.value = !cameraOn.value;
     localStream?.getVideoTracks().forEach((track) => (track.enabled = cameraOn.value));
-    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value });
+    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value, screenSharing: screenSharing.value });
+}
+
+async function startScreenShare(): Promise<void> {
+    if (!screenShareSupported || screenSharing.value || screenShareBusy.value) return;
+    screenShareBusy.value = true;
+    screenShareError.value = '';
+
+    let stream: MediaStream;
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    } catch {
+        screenShareError.value = 'Screen share permission was denied.';
+        screenShareBusy.value = false;
+        return;
+    }
+
+    screenStream = stream;
+    const screenTrack = stream.getVideoTracks()[0];
+    // Fires when the share ends via the browser/OS's own "Stop sharing" control,
+    // not just our button — must revert to the camera either way.
+    screenTrack.onended = () => {
+        void stopScreenShare();
+    };
+
+    Object.values(connections).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+        void sender?.replaceTrack(screenTrack);
+    });
+
+    if (localVideo.value) {
+        localVideo.value.srcObject = screenStream;
+    }
+
+    screenSharing.value = true;
+    screenShareBusy.value = false;
+    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value, screenSharing: true });
+}
+
+async function stopScreenShare(): Promise<void> {
+    if (!screenStream) return;
+
+    screenStream.getTracks().forEach((track) => track.stop());
+    screenStream = null;
+
+    const cameraTrack = localStream?.getVideoTracks()[0] ?? null;
+    Object.values(connections).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+        void sender?.replaceTrack(cameraTrack);
+    });
+
+    if (localVideo.value) {
+        localVideo.value.srcObject = localStream;
+    }
+
+    screenSharing.value = false;
+    channel?.whisper('media-state', { from: myId, mic: micOn.value, camera: cameraOn.value, screenSharing: false });
 }
 
 async function leaveRoom(): Promise<void> {
@@ -385,6 +459,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
         <template v-else>
             <p v-if="notice" class="text-xs text-center bg-amber-950/50 text-amber-300 py-1.5">{{ notice }}</p>
             <p v-if="hostActionError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ hostActionError }}</p>
+            <p v-if="screenShareError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ screenShareError }}</p>
 
             <div v-if="isHost" class="flex items-center justify-center gap-2 px-4 py-2 border-b border-neutral-800 text-xs">
                 <button
@@ -422,6 +497,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         You
                         <span v-if="!micOn">· muted</span>
                         <span v-if="!cameraOn">· camera off</span>
+                        <span v-if="screenSharing">· presenting</span>
                     </div>
                 </div>
 
@@ -440,6 +516,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         {{ peer.name }}
                         <span v-if="!peer.micOn">· muted</span>
                         <span v-if="!peer.cameraOn">· camera off</span>
+                        <span v-if="peer.screenSharing">· presenting</span>
                         <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
                     </div>
                     <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
@@ -479,6 +556,16 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="toggleCamera"
                 >
                     {{ cameraOn ? 'Stop camera' : 'Start camera' }}
+                </button>
+                <button
+                    v-if="screenShareSupported"
+                    type="button"
+                    :disabled="screenShareBusy"
+                    class="rounded-full px-4 py-2 text-sm font-medium border border-neutral-800 disabled:opacity-50"
+                    :class="screenSharing ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"
+                    @click="screenSharing ? stopScreenShare() : startScreenShare()"
+                >
+                    {{ screenSharing ? 'Stop sharing' : 'Share screen' }}
                 </button>
                 <button type="button" class="rounded-full px-4 py-2 text-sm font-medium bg-red-700" @click="leaveRoom">
                     Leave
