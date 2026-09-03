@@ -222,8 +222,8 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] History view: meeting/date/duration/participants/status — DONE (new `GET /meetings/{meeting}/participants` endpoint, host-only, returns the full roster with `duration_seconds`; new `History.vue` page — reachable via a "History" nav link — lists every `ended`/`cancelled` meeting with its date and actual call duration (`ended_at - started_at`), expandable per meeting to show each participant's name, role, final status, and duration. See [API.md](API.md#get-apiv1meetingsmeetingparticipants))
 
 ### Phase 14 — Recording (design-first)
-- [ ] Architecture decision documented (browser MediaRecorder vs. server-side/SFU) before any implementation
-- [ ] Not implemented until WebRTC MVP (Phases 5–8) is stable
+- [x] Architecture decision documented (browser MediaRecorder vs. server-side/SFU) before any implementation — DONE (see [RECORDING.md](RECORDING.md): client-side `MediaRecorder` is the near-term path if recording is needed before the SFU migration described in [WEBRTC.md](WEBRTC.md#when-an-sfu-becomes-necessary); server-side FFmpeg-fed recording, already named in §16 below, is sequenced *after* that migration rather than used to justify bringing it forward early)
+- [x] Not implemented until WebRTC MVP (Phases 5–8) is stable — DONE (Phases 5–8 have been complete and verified since 2026-09-02/03; per [RECORDING.md](RECORDING.md), this phase is documentation-only — no recording toggle, `MediaRecorder` usage, upload endpoint, or storage schema ships here. Implementation remains a separately-scheduled future phase)
 
 ### Phase 15 — Admin Panel
 - [ ] Users, meetings, active meetings, history, participants views
@@ -278,7 +278,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 - P2P mesh WebRTC realistically supports ~2–6 participants; beyond that, CPU/bandwidth degrade (O(n²) mesh links). No SFU in MVP.
 - No email/SMS notifications in MVP.
-- Recording is not implemented until Phase 14 is explicitly scheduled and its architecture is documented.
+- Recording is not implemented — Phase 14 (2026-09-03) documented the architecture decision only (see [RECORDING.md](RECORDING.md)); implementation is a separately-scheduled future phase.
 - No mobile apps in this phase — API is kept ready, not yet consumed by a mobile client.
 - Updated continuously as real limitations are discovered during testing (see [BUGS.md](BUGS.md)).
 
@@ -287,7 +287,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 ## 16. Future Improvements
 
 - SFU adoption (mediasoup or self-hosted LiveKit) once mesh participant limits are hit — triggers documented in §5.
-- Server-side recording pipeline (FFmpeg + SFU) once Phase 14 is scheduled.
+- Server-side recording pipeline (FFmpeg + SFU) once the SFU migration (§5) happens — see [RECORDING.md](RECORDING.md) for why recording is sequenced after that migration rather than before it, and client-side `MediaRecorder` recording as the interim path if recording is needed sooner.
 - Email/SMS meeting notifications.
 - Native Android/iOS clients consuming the existing `/api/v1`.
 - Breakout rooms, virtual backgrounds, reactions — evaluated post-MVP.
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) complete and verified (2026-09-03); Phase 9 (Real-Time Chat) complete and verified (2026-09-03); Phase 10 (Participants Panel) complete and verified (2026-09-03); Phase 11 (Waiting Room) complete and verified (2026-09-03); Phase 12 (Scheduling) complete and verified (2026-09-03); Phase 13 (Meeting History) complete and verified (2026-09-03); Phase 14 (Recording, design-first) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) complete and verified (2026-09-03); Phase 9 (Real-Time Chat) complete and verified (2026-09-03); Phase 10 (Participants Panel) complete and verified (2026-09-03); Phase 11 (Waiting Room) complete and verified (2026-09-03); Phase 12 (Scheduling) complete and verified (2026-09-03); Phase 13 (Meeting History) complete and verified (2026-09-03); Phase 14 (Recording, design-first) complete and verified (2026-09-03) — documentation-only, see [RECORDING.md](RECORDING.md); Phase 15 (Admin Panel) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

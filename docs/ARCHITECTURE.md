@@ -46,4 +46,4 @@ Standard Laravel layout (see project root) plus:
 
 ## Related Docs
 
-[ROADMAP.md](ROADMAP.md) · [DATABASE.md](DATABASE.md) · [WEBRTC.md](WEBRTC.md) · [SECURITY.md](SECURITY.md) · [API.md](API.md) (added in Phase 2/3) · [DEPLOYMENT.md](DEPLOYMENT.md)
+[ROADMAP.md](ROADMAP.md) · [DATABASE.md](DATABASE.md) · [WEBRTC.md](WEBRTC.md) · [SECURITY.md](SECURITY.md) · [API.md](API.md) (added in Phase 2/3) · [DEPLOYMENT.md](DEPLOYMENT.md) · [RECORDING.md](RECORDING.md) (added in Phase 14, design-only)
