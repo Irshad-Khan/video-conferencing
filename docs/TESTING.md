@@ -226,3 +226,18 @@ Verified 2026-09-03, mcsirshad95@gmail.com.
 | TC-P9-09 | Persistence across reload | Reloading the room mid-conversation re-fetches full history via `GET .../messages` on mount; all prior messages (from both participants) are present after the reload, not just ones received live | PASS |
 
 Driven the same way as Phase 7/8: one authenticated host and one guest over CDP against real headless Chrome, asserting on live DOM state (chat panel content, unread badge text, sender labels) after each action rather than only the HTTP response. No new bugs were found in the application itself during this pass.
+
+## Phase 10 Verification Checklist (Participants Panel)
+
+Verified 2026-09-03, mcsirshad95@gmail.com. Entirely a frontend feature — no backend routes or migrations were added, so the automated suite is unaffected (still 98/98, 289 assertions, re-run to confirm no regression). Host controls in the panel reuse the exact same `muteParticipant()`/`removeParticipant()` functions and `/participants/{id}/mute`/`/remove` endpoints already covered by Phase 7's `MeetingControlsTest.php`/`MeetingControlsAuthorizationTest.php`.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P10-01 | Live participant count | The "Participants" toggle button reads `Participants (N)`, `N` = everyone currently in the call including self; with a host + 2 guests connected, all three clients show `(3)` | PASS |
+| TC-P10-02 | Roster with mic/camera/role indicators | Opening the panel lists every participant (self first, labeled "You") with a role badge (Host/Guest) and live "Mic on/off · Camera on/off" text | PASS |
+| TC-P10-03 | Host-only inline controls | Mute/Remove buttons render per-row only for the host viewing the panel, and only on other participants' rows (never on the host's own "You" row); a non-host participant's panel shows no such buttons at all | PASS |
+| TC-P10-04 | Live-updating indicators | A participant toggling their own mic is reflected in real time in every other open panel (same `media-state` whisper the video tiles already consume — no new signaling needed) | PASS |
+| TC-P10-05 | Inline mute from the panel | Clicking a row's "Mute" button force-mutes that specific participant (and only that one) — verified by targeting the first of two guest rows and confirming the *other* guest was unaffected | PASS |
+| TC-P10-06 | Inline remove from the panel | Clicking a row's "Remove" button (behind the existing `confirm()` prompt) disconnects that participant and redirects them; the live count and roster drop for every remaining connected client, not just the host who clicked it | PASS |
+
+Driven the same way as Phase 7/8/9: one authenticated host and two guests over CDP against real headless Chrome, asserting on live DOM state (button labels, panel row text) after each action. One test-harness-only gotcha surfaced here (not an application bug): `removeParticipant()`'s native `window.confirm()` genuinely blocks headless Chrome's renderer thread with no on-screen way to dismiss it, hanging the CDP connection — the fix is to override `window.confirm = () => true` before triggering the click, the same workaround Phase 7's own testing already used for `endMeetingForAll()`/`deleteMeeting()`.

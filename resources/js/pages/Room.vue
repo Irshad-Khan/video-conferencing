@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload } from '../types';
+import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -23,6 +23,7 @@ interface PeerTile {
     id: string;
     name: string;
     participantId: number | null;
+    role: ParticipantRole;
     stream: MediaStream | null;
     state: ConnectionState;
     micOn: boolean;
@@ -51,6 +52,8 @@ const chatDraft = ref('');
 const chatError = ref('');
 const chatSending = ref(false);
 const unreadCount = ref(0);
+const participantsOpen = ref(false);
+const myRole = ref<ParticipantRole>('participant');
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
@@ -76,10 +79,10 @@ function connectionUiState(state: RTCPeerConnectionState): ConnectionState {
     return 'connecting';
 }
 
-function ensurePeer(id: string, name: string, participantId: number | null = null): RTCPeerConnection {
+function ensurePeer(id: string, name: string, participantId: number | null = null, role: ParticipantRole = 'participant'): RTCPeerConnection {
     if (connections[id]) return connections[id];
 
-    peers[id] = peers[id] ?? { id, name, participantId, stream: null, state: 'connecting', micOn: true, cameraOn: true, screenSharing: false };
+    peers[id] = peers[id] ?? { id, name, participantId, role, stream: null, state: 'connecting', micOn: true, cameraOn: true, screenSharing: false };
 
     const pc = new RTCPeerConnection(iceConfig());
 
@@ -112,7 +115,14 @@ async function createOfferTo(id: string, name: string): Promise<void> {
     const pc = ensurePeer(id, name);
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    channel?.whisper('webrtc-offer', { from: myId, target: id, name: myName, participantId: myParticipantId, sdp: offer });
+    channel?.whisper('webrtc-offer', {
+        from: myId,
+        target: id,
+        name: myName,
+        participantId: myParticipantId,
+        role: joinData?.participant.role,
+        sdp: offer,
+    });
 }
 
 function teardownPeer(id: string): void {
@@ -125,12 +135,13 @@ function attachSignalingListeners(): void {
     if (!channel) return;
 
     channel
-        .listenForWhisper('participant.announce', (payload: { id: string; name: string; participantId?: number }) => {
+        .listenForWhisper('participant.announce', (payload: { id: string; name: string; participantId?: number; role?: ParticipantRole }) => {
             if (payload.id === myId || connections[payload.id]) return;
             peers[payload.id] = {
                 id: payload.id,
                 name: payload.name,
                 participantId: payload.participantId ?? null,
+                role: payload.role ?? 'participant',
                 stream: null,
                 state: 'connecting',
                 micOn: true,
@@ -142,9 +153,14 @@ function attachSignalingListeners(): void {
         .listenForWhisper('participant.bye', (payload: { id: string }) => {
             teardownPeer(payload.id);
         })
-        .listenForWhisper('webrtc-offer', async (payload: { from: string; target: string; name?: string; participantId?: number; sdp: RTCSessionDescriptionInit }) => {
+        .listenForWhisper('webrtc-offer', async (payload: { from: string; target: string; name?: string; participantId?: number; role?: ParticipantRole; sdp: RTCSessionDescriptionInit }) => {
             if (payload.target !== myId) return;
-            const pc = ensurePeer(payload.from, peers[payload.from]?.name ?? payload.name ?? 'Participant', payload.participantId ?? null);
+            const pc = ensurePeer(
+                payload.from,
+                peers[payload.from]?.name ?? payload.name ?? 'Participant',
+                payload.participantId ?? null,
+                payload.role ?? 'participant',
+            );
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -250,6 +266,7 @@ onMounted(async () => {
     myName = joinData.participant.guest_name ?? state.user?.name ?? 'Participant';
     myParticipantId = joinData.participant.id;
     isHost.value = joinData.participant.role === 'host';
+    myRole.value = joinData.participant.role;
     meetingLocked.value = joinData.meeting.is_locked;
     guestsAllowed.value = joinData.meeting.allow_guests;
 
@@ -273,7 +290,12 @@ onMounted(async () => {
     attachSignalingListeners();
     channel
         .subscribed(() => {
-            channel?.whisper('participant.announce', { id: myId, name: myName, participantId: myParticipantId });
+            channel?.whisper('participant.announce', {
+                id: myId,
+                name: myName,
+                participantId: myParticipantId,
+                role: joinData?.participant.role,
+            });
         })
         .error(() => {
             error.value = 'Could not connect to the meeting room. Please try again.';
@@ -387,6 +409,17 @@ function toggleChat(): void {
     if (chatOpen.value) {
         unreadCount.value = 0;
     }
+}
+
+function toggleParticipants(): void {
+    participantsOpen.value = !participantsOpen.value;
+}
+
+function roleLabel(role: ParticipantRole): string {
+    if (role === 'host') return 'Host';
+    if (role === 'co_host') return 'Co-host';
+    if (role === 'guest') return 'Guest';
+    return 'Participant';
 }
 
 async function sendChatMessage(): Promise<void> {
@@ -629,6 +662,57 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         </button>
                     </form>
                 </aside>
+
+                <aside v-if="participantsOpen" class="w-80 shrink-0 border-l border-neutral-800 flex flex-col">
+                    <div class="px-3 py-2 border-b border-neutral-800 text-sm font-medium flex items-center justify-between">
+                        Participants ({{ Object.keys(peers).length + 1 }})
+                        <button type="button" class="text-neutral-400 hover:text-neutral-200 text-xs" @click="toggleParticipants">Close</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+                        <div class="flex items-center justify-between gap-2 py-2 border-b border-neutral-900">
+                            <div class="min-w-0">
+                                <p class="text-sm text-neutral-100 truncate">
+                                    You
+                                    <span class="text-xs text-neutral-500">({{ roleLabel(myRole) }})</span>
+                                </p>
+                                <p class="text-xs text-neutral-500">
+                                    {{ micOn ? 'Mic on' : 'Mic off' }} · {{ cameraOn ? 'Camera on' : 'Camera off' }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div v-for="peer in peers" :key="peer.id" class="flex items-center justify-between gap-2 py-2 border-b border-neutral-900">
+                            <div class="min-w-0">
+                                <p class="text-sm text-neutral-100 truncate">
+                                    {{ peer.name }}
+                                    <span class="text-xs text-neutral-500">({{ roleLabel(peer.role) }})</span>
+                                </p>
+                                <p class="text-xs text-neutral-500">
+                                    {{ peer.micOn ? 'Mic on' : 'Mic off' }} · {{ peer.cameraOn ? 'Camera on' : 'Camera off' }}
+                                    <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
+                                </p>
+                            </div>
+                            <div v-if="isHost && peer.participantId" class="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    :disabled="hostActionBusy"
+                                    class="text-xs bg-neutral-900 hover:bg-neutral-800 rounded px-2 py-1 disabled:opacity-50"
+                                    @click="muteParticipant(peer)"
+                                >
+                                    Mute
+                                </button>
+                                <button
+                                    type="button"
+                                    :disabled="hostActionBusy"
+                                    class="text-xs bg-neutral-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                    @click="removeParticipant(peer)"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             <div class="flex items-center justify-center gap-3 p-4 border-t border-neutral-800">
@@ -657,6 +741,14 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="screenSharing ? stopScreenShare() : startScreenShare()"
                 >
                     {{ screenSharing ? 'Stop sharing' : 'Share screen' }}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
+                    :class="participantsOpen ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"
+                    @click="toggleParticipants"
+                >
+                    Participants ({{ Object.keys(peers).length + 1 }})
                 </button>
                 <button
                     type="button"

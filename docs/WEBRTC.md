@@ -26,7 +26,7 @@ The signaling server (Reverb) never sees decoded/decrypted media — only SDP an
 
 The channel is `private-meeting.{meeting_uuid}` (plain private, not presence — see "Why not a presence channel" below). All signaling — roster, offer/answer, ICE — travels as client **whisper** events on this one channel; Reverb relays them without any Laravel/PHP involvement per message, only the initial subscribe is authenticated server-side (`routes/channels.php`).
 
-1. New participant joins the room, subscribes to the channel, and once subscription is confirmed whispers `participant.announce` (`{ id, name }`, `id` being their stable presence id — `user-{user_id}` or `guest-{participant_id}`).
+1. New participant joins the room, subscribes to the channel, and once subscription is confirmed whispers `participant.announce` (`{ id, name, participantId, role }`, `id` being their stable presence id — `user-{user_id}` or `guest-{participant_id}`; `role` — added in Phase 10 for the participants panel's host/guest indicator — is carried the same way into the `webrtc-offer` payload for the reverse direction, since a new joiner only learns an existing peer's identity from the offer they receive, never from an announce of their own).
 2. Every existing participant is listening for `participant.announce`; on receipt each creates an `RTCPeerConnection`, generates an SDP **offer**, and whispers it (`webrtc-offer`, targeted at the new participant's id).
 3. The new participant receives each offer, sets the remote description, creates an **answer**, and whispers it back (`webrtc-answer`).
 4. Both sides exchange **ICE candidates** (`webrtc-ice-candidate`) as they're discovered (trickle ICE).
