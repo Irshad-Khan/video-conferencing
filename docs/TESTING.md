@@ -241,3 +241,19 @@ Verified 2026-09-03, mcsirshad95@gmail.com. Entirely a frontend feature — no b
 | TC-P10-06 | Inline remove from the panel | Clicking a row's "Remove" button (behind the existing `confirm()` prompt) disconnects that participant and redirects them; the live count and roster drop for every remaining connected client, not just the host who clicked it | PASS |
 
 Driven the same way as Phase 7/8/9: one authenticated host and two guests over CDP against real headless Chrome, asserting on live DOM state (button labels, panel row text) after each action. One test-harness-only gotcha surfaced here (not an application bug): `removeParticipant()`'s native `window.confirm()` genuinely blocks headless Chrome's renderer thread with no on-screen way to dismiss it, hanging the CDP connection — the fix is to override `window.confirm = () => true` before triggering the click, the same workaround Phase 7's own testing already used for `endMeetingForAll()`/`deleteMeeting()`.
+
+## Phase 11 Verification Checklist (Waiting Room)
+
+Verified 2026-09-03, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P11-00 | Automated suite | `php artisan test` passes | PASS (112/112 tests, 344 assertions — adds `MeetingWaitingRoomTest.php`, 14 cases) |
+| TC-P11-01 | Non-host placed in the waiting room when enabled | With `waiting_room_enabled: true`, a non-host joiner (authenticated or guest) gets `status: waiting` and sees "You're in the waiting room..." instead of entering the call; the host still bypasses it entirely | PASS |
+| TC-P11-02 | Live notification to the host | The moment someone lands in the waiting room, the host's already-open Room.vue shows it immediately — badge count on the "Waiting Room" toggle button, and the participant listed by name in the panel — with no page refresh or re-fetch needed | PASS |
+| TC-P11-03 | Admit | Clicking "Admit" on a waiting participant's row lets them in; *their own tab* (still sitting on the waiting screen) transitions to the room automatically within moments, with no action needed on their end — driven by the new `waiting-room.{uuid}` channel, since a `waiting` participant can't subscribe to the main signaling channel to receive this any other way | PASS |
+| TC-P11-04 | Reject | Clicking "Reject" turns the waiting participant away; their screen shows a terminal "Not admitted" message, and any further `/join` attempt for them is blocked (`403`), matching how `removed` participants are already blocked | PASS |
+| TC-P11-05 | Reconnect skips the waiting room | A participant previously admitted (authenticated user matched by session, or guest matched by their held `guest_token`) who reconnects — a fresh page load and a second "Join meeting" click — goes straight into the room without waiting a second time | PASS |
+| TC-P11-06 | Live per-meeting toggle | Disabling the waiting room mid-meeting via the host toolbar takes effect immediately: the next guest to join goes straight into the room, no waiting screen at all | PASS |
+
+Driven the same way as Phase 7–10: real headless Chrome over CDP, three independent profiles this run (host, an authenticated participant, and a true anonymous guest) — the guest specifically needed its own Chrome profile rather than reusing the authenticated participant's, since Chrome shares cookies across tabs within one profile and a "guest" tab sharing a profile with a signed-in user would silently join as that user instead of anonymously. Asserted on live DOM state (waiting-room panel content, badge counts, the participant's own screen transitioning without any click on their end) rather than only HTTP responses. No new application bugs were found during this pass.

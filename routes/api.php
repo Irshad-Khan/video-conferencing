@@ -44,6 +44,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/meetings/{meeting}/unlock', [MeetingControlController::class, 'unlock']);
         Route::post('/meetings/{meeting}/guests/enable', [MeetingControlController::class, 'enableGuests']);
         Route::post('/meetings/{meeting}/guests/disable', [MeetingControlController::class, 'disableGuests']);
+        Route::post('/meetings/{meeting}/waiting-room/enable', [MeetingControlController::class, 'enableWaitingRoom']);
+        Route::post('/meetings/{meeting}/waiting-room/disable', [MeetingControlController::class, 'disableWaitingRoom']);
+        Route::get('/meetings/{meeting}/participants/waiting', [MeetingControlController::class, 'waitingParticipants']);
+        Route::post('/meetings/{meeting}/participants/{participant}/admit', [MeetingControlController::class, 'admitParticipant']);
+        Route::post('/meetings/{meeting}/participants/{participant}/reject', [MeetingControlController::class, 'rejectParticipant']);
         Route::post('/meetings/{meeting}/participants/{participant}/mute', [MeetingControlController::class, 'muteParticipant']);
         Route::post('/meetings/{meeting}/participants/{participant}/remove', [MeetingControlController::class, 'removeParticipant']);
     });

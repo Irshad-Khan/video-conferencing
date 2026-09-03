@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\WaitingRoomEvent;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\JoinMeetingRequest;
 use App\Models\Meeting;
@@ -75,13 +76,19 @@ class MeetingJoinController extends Controller
 
         $participant = $user
             ? MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $user->id)->first()
-            : null;
+            : $this->resolveGuestParticipant($meeting, $request->input('guest_token'));
 
         if ($participant && in_array($participant->status, [MeetingParticipant::STATUS_REMOVED, MeetingParticipant::STATUS_REJECTED], true)) {
             return response()->json(['message' => 'You are not permitted to join this meeting.'], 403);
         }
 
-        $status = $isHost || ! $meeting->waiting_room_enabled
+        // A participant already vetted by the host in a previous join (i.e. ever
+        // admitted) skips the waiting room on reconnect — including the case this
+        // very request is handling: a waiting guest/participant's client re-calling
+        // /join right after receiving the "admitted" broadcast (see WEBRTC.md#waiting-room-signaling).
+        $wasAdmitted = $participant && $participant->admitted_at !== null;
+
+        $status = $isHost || ! $meeting->waiting_room_enabled || $wasAdmitted
             ? MeetingParticipant::STATUS_JOINED
             : MeetingParticipant::STATUS_WAITING;
 
@@ -109,10 +116,20 @@ class MeetingJoinController extends Controller
             $participant->forceFill(['guest_token' => hash('sha256', $guestToken)])->save();
         }
 
+        if ($status === MeetingParticipant::STATUS_WAITING) {
+            broadcast(new WaitingRoomEvent($meeting, 'participant-waiting', [
+                'participant' => [
+                    'id' => $participant->id,
+                    'name' => $participant->guest_name ?? $user?->name,
+                    'role' => $participant->role,
+                ],
+            ]));
+        }
+
         return response()->json([
             'data' => [
                 'participant' => $participant,
-                'meeting' => $meeting->only(['meeting_uuid', 'meeting_code', 'title', 'status', 'is_locked', 'allow_guests']),
+                'meeting' => $meeting->only(['meeting_uuid', 'meeting_code', 'title', 'status', 'is_locked', 'allow_guests', 'waiting_room_enabled']),
                 'guest_token' => $guestToken,
                 'presence_id' => $participant->presenceId(),
             ],
@@ -137,7 +154,13 @@ class MeetingJoinController extends Controller
             return response()->json(['message' => 'You are not a participant of this meeting.'], 404);
         }
 
+        $wasWaiting = $participant->status === MeetingParticipant::STATUS_WAITING;
+
         $participant->forceFill(['status' => MeetingParticipant::STATUS_LEFT, 'left_at' => now()])->save();
+
+        if ($wasWaiting) {
+            broadcast(new WaitingRoomEvent($meeting, 'participant-left-waiting', ['id' => $participant->id]));
+        }
 
         return response()->json(['data' => $participant]);
     }

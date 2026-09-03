@@ -67,12 +67,21 @@ export interface MeetingParticipant {
 
 export interface JoinMeetingResponse {
     participant: MeetingParticipant;
-    meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status' | 'is_locked' | 'allow_guests'>;
+    meeting: Pick<Meeting, 'meeting_uuid' | 'meeting_code' | 'title' | 'status' | 'is_locked' | 'allow_guests' | 'waiting_room_enabled'>;
     guest_token: string | null;
     presence_id: string;
 }
 
-export type HostControlAction = 'mute' | 'remove' | 'lock' | 'unlock' | 'end' | 'guests-enabled' | 'guests-disabled';
+export type HostControlAction =
+    | 'mute'
+    | 'remove'
+    | 'lock'
+    | 'unlock'
+    | 'end'
+    | 'guests-enabled'
+    | 'guests-disabled'
+    | 'waiting-room-enabled'
+    | 'waiting-room-disabled';
 
 export interface HostControlPayload {
     action: HostControlAction;
@@ -93,4 +102,19 @@ export interface ChatMessage {
     sender_role: ParticipantRole | null;
     presence_id: string | null;
     created_at: string;
+}
+
+export interface WaitingParticipant {
+    id: number;
+    name: string;
+    role: ParticipantRole;
+}
+
+export type WaitingRoomAction = 'participant-waiting' | 'participant-left-waiting' | 'admitted' | 'rejected';
+
+export interface WaitingRoomPayload {
+    action: WaitingRoomAction;
+    participant?: WaitingParticipant;
+    id?: number;
+    target?: string;
 }

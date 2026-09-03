@@ -19,6 +19,7 @@ class JoinMeetingRequest extends FormRequest
         return [
             'password' => ['nullable', 'string'],
             'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_token' => ['nullable', 'string'],
         ];
     }
 }

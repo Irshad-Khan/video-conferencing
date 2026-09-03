@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { isAxiosError } from 'axios';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { JoinMeetingResponse, MeetingLookup } from '../types';
+import type { JoinMeetingResponse, MeetingLookup, WaitingRoomPayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +25,9 @@ const joining = ref(false);
 
 const joined = ref<JoinMeetingResponse | null>(null);
 const leaving = ref(false);
+const rejected = ref(false);
+
+let waitingChannel: EchoChannel | null = null;
 
 const isEndedOrCancelled = computed(
     () => lookup.value?.status === 'ended' || lookup.value?.status === 'cancelled',
@@ -60,6 +63,7 @@ async function submitJoin(): Promise<void> {
         const { data } = await api.post<{ data: JoinMeetingResponse }>(`/meetings/${code}/join`, {
             password: password.value || undefined,
             guest_name: guestName.value || undefined,
+            guest_token: sessionStorage.getItem(guestTokenKey) || undefined,
         });
 
         joined.value = data.data;
@@ -68,7 +72,10 @@ async function submitJoin(): Promise<void> {
             sessionStorage.setItem(guestTokenKey, data.data.guest_token);
         }
 
-        if (data.data.participant.status !== 'waiting') {
+        if (data.data.participant.status === 'waiting') {
+            subscribeToWaitingRoom(data.data);
+        } else {
+            leaveWaitingChannel();
             sessionStorage.setItem(joinDataKey, JSON.stringify(data.data));
             router.push({ name: 'room', params: { code } });
         }
@@ -85,6 +92,36 @@ async function submitJoin(): Promise<void> {
     }
 }
 
+function subscribeToWaitingRoom(joinResponse: JoinMeetingResponse): void {
+    if (waitingChannel) return;
+
+    const guestToken = sessionStorage.getItem(guestTokenKey);
+    if (guestToken) {
+        window.Echo.connector.options.auth.headers['X-Guest-Token'] = guestToken;
+    }
+
+    waitingChannel = window.Echo.private(`waiting-room.${joinResponse.meeting.meeting_uuid}`);
+    waitingChannel.listen('.waiting-room', (payload: WaitingRoomPayload) => {
+        if (payload.target !== joinResponse.presence_id) return;
+
+        if (payload.action === 'admitted') {
+            void submitJoin();
+        } else if (payload.action === 'rejected') {
+            leaveWaitingChannel();
+            joined.value = null;
+            rejected.value = true;
+        }
+    });
+}
+
+function leaveWaitingChannel(): void {
+    if (!waitingChannel) return;
+    window.Echo.leave(`waiting-room.${joined.value?.meeting.meeting_uuid}`);
+    waitingChannel = null;
+}
+
+onBeforeUnmount(leaveWaitingChannel);
+
 async function leaveMeeting(): Promise<void> {
     leaving.value = true;
 
@@ -92,6 +129,7 @@ async function leaveMeeting(): Promise<void> {
         const guestToken = sessionStorage.getItem(guestTokenKey);
         await api.post(`/meetings/${code}/leave`, guestToken ? { guest_token: guestToken } : {});
         sessionStorage.removeItem(guestTokenKey);
+        leaveWaitingChannel();
         joined.value = null;
         await loadLookup();
     } catch {
@@ -110,6 +148,11 @@ async function leaveMeeting(): Promise<void> {
             <div v-else-if="notFound" class="space-y-2">
                 <h1 class="text-xl font-semibold">Meeting not found</h1>
                 <p class="text-sm text-neutral-400">Check the meeting code and try again.</p>
+            </div>
+
+            <div v-else-if="rejected" class="space-y-2">
+                <h1 class="text-xl font-semibold">Not admitted</h1>
+                <p class="text-sm text-neutral-400">The host did not admit you to this meeting.</p>
             </div>
 
             <div v-else-if="joined" class="space-y-4">

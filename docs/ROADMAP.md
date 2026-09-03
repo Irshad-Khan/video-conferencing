@@ -90,7 +90,7 @@ Full detail: [WEBRTC.md](WEBRTC.md).
 
 - Laravel Reverb private channels, one per meeting: `private-meeting.{meeting_uuid}`.
 - Channel authorization checked server-side against `meeting_participants` (must be an active, non-removed participant) — never trust a client-asserted meeting/user id.
-- Signaling event types: `participant.joined`, `participant.left`, `webrtc.offer`, `webrtc.answer`, `webrtc.ice-candidate`, `media.state-changed` (mic/cam), `chat.message`, `host.control` (mute/remove/lock/end).
+- Signaling event types: `participant.joined`, `participant.left`, `webrtc.offer`, `webrtc.answer`, `webrtc.ice-candidate`, `media.state-changed` (mic/cam), `chat.message`, `host.control` (mute/remove/lock/end), `waiting-room` (participant-waiting/admitted/rejected — the one event type broadcast on two different private channels depending on audience, see [WEBRTC.md](WEBRTC.md#waiting-room-signaling)).
 
 ---
 
@@ -208,9 +208,9 @@ Full detail: [SECURITY.md](SECURITY.md). Baseline principles applied from Phase 
 - [x] Host controls inline — DONE (per-row Mute/Remove buttons, host-only, reusing the exact `muteParticipant()`/`removeParticipant()` functions Phase 7 built for the video-tile overlay controls — same actions, same server endpoints, just a second entry point. The video-tile overlay controls were left in place rather than removed, so host actions remain available whichever panel is open)
 
 ### Phase 11 — Waiting Room
-- [ ] Per-meeting toggle
-- [ ] Host admit/reject UI + API
-- [ ] Tests: enabled/disabled, admit, reject, reconnect
+- [x] Per-meeting toggle — DONE (`waiting_room_enabled` was already settable at create/edit time since Phase 3/4; Phase 11 adds a *live* in-room toggle too — `POST .../waiting-room/enable`/`disable`, broadcast as `HostControlEvent` actions `waiting-room-enabled`/`waiting-room-disabled`, same pattern as the existing lock/guests toggles — since a host may want to turn it on/off mid-meeting, not just at scheduling time)
+- [x] Host admit/reject UI + API — DONE. API: `GET .../participants/waiting` (list), `POST .../participants/{id}/admit`, `POST .../participants/{id}/reject`, all host-only (`MeetingPolicy::manageParticipants`). UI: a new "Waiting Room" side panel in `Room.vue` (host-only, same pattern as the Chat/Participants panels), with a live badge count and Admit/Reject buttons per row; `Join.vue`'s existing "You're in the waiting room" screen now actually resolves — it subscribes to a new `waiting-room.{uuid}` channel and auto-transitions to the room on admission, or shows a terminal "Not admitted" message on rejection, instead of sitting there forever. See [WEBRTC.md](WEBRTC.md#waiting-room-signaling)
+- [x] Tests: enabled/disabled, admit, reject, reconnect — DONE (14 new Feature tests in `MeetingWaitingRoomTest.php`, covering all four plus live toggle and authorization boundaries; automated suite 112/112, 344 assertions. "Reconnect" specifically covers both an authenticated participant and a guest — via their `guest_token` — skipping the waiting room a second time once previously admitted, using a new `admitted_at` column distinct from `joined_at`/`left_at`. Full end-to-end flow — including the real-time admit/reject notification a `waiting` participant can't receive on the main channel — verified live over CDP with a host, an authenticated participant, and two guests; see [TESTING.md](TESTING.md#phase-11-verification-checklist-waiting-room))
 
 ### Phase 12 — Scheduling
 - [ ] Date/time/duration/title/password/waiting-room/guest settings on create
@@ -296,4 +296,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md). Summary: same Docker Compose topology for pr
 
 ## MVP Status
 
-`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) complete and verified (2026-09-03); Phase 9 (Real-Time Chat) complete and verified (2026-09-03); Phase 10 (Participants Panel) complete and verified (2026-09-03); Phase 11 (Waiting Room) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.
+`IN PROGRESS` — Phase 1 (Project Foundation) complete and verified (2026-09-01); Phase 2 (Authentication) complete and verified (2026-09-02); Phase 3 (Meeting Management) complete and verified (2026-09-02); Phase 4 (Join Meeting) complete and verified (2026-09-02); Phase 5 (WebRTC Audio/Video core) complete and verified (2026-09-02); Phase 6 (Multi-Participant Video) complete and verified (2026-09-02); Phase 7 (Meeting Controls) complete and verified (2026-09-02); Phase 8 (Screen Sharing) complete and verified (2026-09-03); Phase 9 (Real-Time Chat) complete and verified (2026-09-03); Phase 10 (Participants Panel) complete and verified (2026-09-03); Phase 11 (Waiting Room) complete and verified (2026-09-03); Phase 12 (Scheduling) not yet started. See §11 for live per-phase checklists; a box is checked only once implemented, tested, and manually verified per the phase-completion rule in the project's development workflow.

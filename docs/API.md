@@ -100,6 +100,26 @@ Response: `200 {"data": {...meeting}}`.
 Toggles `allow_guests` live.
 Response: `200 {"data": {...meeting}}`.
 
+### `POST /api/v1/meetings/{meeting}/waiting-room/enable` / `POST /api/v1/meetings/{meeting}/waiting-room/disable`
+
+Toggles `waiting_room_enabled` live — takes effect on the next `/join` call, does not affect anyone already `joined`/`admitted`.
+Response: `200 {"data": {...meeting}}`.
+
+### `GET /api/v1/meetings/{meeting}/participants/waiting`
+
+Lists everyone currently `status: waiting` for this meeting, oldest first.
+Response: `200 {"data": [{"id", "name", "role"}]}`.
+
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/admit`
+
+Lets a waiting participant into the call: sets `status` to `admitted` and `admitted_at` to now, and broadcasts `action: admitted` (`target` = the participant's `presenceId()`) on `private-waiting-room.{meeting_uuid}` — see [WEBRTC.md](WEBRTC.md#waiting-room-signaling). `admitted_at` being set is also what lets this participant skip the waiting room on any future reconnect.
+Response: `200 {"data": {...participant}}`, or `409` if the participant isn't currently `waiting`, or `404` if `{participant}` doesn't belong to `{meeting}`.
+
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/reject`
+
+Turns away a waiting participant: sets `status` to `rejected` and `left_at` to now (never admitted, so a future `/join` attempt is blocked with `403` like any other rejected participant), and broadcasts `action: rejected` the same way `/admit` broadcasts `admitted`.
+Response: `200 {"data": {...participant}}`, or `409` if the participant isn't currently `waiting`, or `404` if `{participant}` doesn't belong to `{meeting}`.
+
 ### `POST /api/v1/meetings/{meeting}/participants/{participant}/mute`
 
 Force-mutes a participant currently in the call (broadcasts `action: mute` with the participant's `presenceId()` as `target`; the target's own client disables its mic).
@@ -121,10 +141,12 @@ Response: `200 {"data": {"meeting_code", "title", "host_name", "status", "has_pa
 
 ### `POST /api/v1/meetings/{code}/join`
 
-Public, rate-limited (20/min). Joins the meeting as the authenticated user, or as a guest if `allow_guests` is true and no session is present. The host joins their own meeting as `role: host` and always bypasses the password check and waiting room. Re-joining (an authenticated user who previously left) updates their existing `meeting_participants` row rather than creating a new one.
+Public, rate-limited (20/min). Joins the meeting as the authenticated user, or as a guest if `allow_guests` is true and no session is present. The host joins their own meeting as `role: host` and always bypasses the password check and waiting room. Re-joining (an authenticated user who previously left, or a guest supplying their `guest_token`) updates their existing `meeting_participants` row rather than creating a new one.
 
-Request: `{"password"?, "guest_name"?}` (`guest_name` required for guests when `allow_guests` is true).
-Response: `200 {"data": {"participant": {...}, "meeting": {...}, "guest_token": string | null}}`. `guest_token` is a one-time, non-authenticated join token returned only to guests (never for signed-in users) — the frontend stores it client-side and must send it back on `/leave`, since guests have no session to authenticate that call.
+If `waiting_room_enabled` is true, a non-host joiner gets `status: waiting` instead of `joined` — *unless* this exact participant has been admitted past the waiting room before (`admitted_at` is set on their row), in which case they skip straight to `joined` even on a fresh reconnect. This is also how a client responds to being admitted while waiting: it re-calls `/join` (now sending the `guest_token` it already holds, for guests) after receiving the real-time `admitted` notification — see [WEBRTC.md](WEBRTC.md#waiting-room-signaling).
+
+Request: `{"password"?, "guest_name"?, "guest_token"?}` (`guest_name` required for guests when `allow_guests` is true; `guest_token`, from a previous `/join` response, lets a guest reconnect to their existing row instead of creating a new one).
+Response: `200 {"data": {"participant": {...}, "meeting": {..., "waiting_room_enabled"}, "guest_token": string | null}}`. `guest_token` is a one-time, non-authenticated join token returned only to guests (never for signed-in users) — the frontend stores it client-side and must send it back on `/leave` and on any later `/join` call, since guests have no session to authenticate those.
 
 Errors: `404` unknown code; `409` meeting is `ended`/`cancelled`; `422` wrong password or missing `guest_name` (standard validation-error shape); `403` guests disallowed, or the requester was previously `removed`/`rejected` from this meeting.
 
@@ -153,7 +175,7 @@ Response: `201 {"data": {...message}}` (same shape as a list entry), `422` for a
 
 ### `POST /broadcasting/auth`
 
-Not under `/api/v1` — this is Laravel's standard Reverb/Pusher-protocol channel authorization endpoint (`routes/channels.php`), called automatically by Laravel Echo before subscribing to `private-meeting.{meeting_uuid}`. Authorizes an authenticated user via their session, or a guest via an `X-Guest-Token` header (the token returned by `/join`) — see [SECURITY.md](SECURITY.md) and [WEBRTC.md](WEBRTC.md#guest-signaling-auth). Returns `403` unless the requester is an active (`joined`/`admitted`) participant of that specific meeting.
+Not under `/api/v1` — this is Laravel's standard Reverb/Pusher-protocol channel authorization endpoint (`routes/channels.php`), called automatically by Laravel Echo before subscribing to `private-meeting.{meeting_uuid}` or `private-waiting-room.{meeting_uuid}`. Authorizes an authenticated user via their session, or a guest via an `X-Guest-Token` header (the token returned by `/join`) — see [SECURITY.md](SECURITY.md) and [WEBRTC.md](WEBRTC.md#guest-signaling-auth). For `meeting.{uuid}`, returns `403` unless the requester is an active (`joined`/`admitted`) participant of that specific meeting; `waiting-room.{uuid}` is deliberately less restrictive — any participant of the meeting may subscribe, regardless of status, since its whole purpose is reaching participants who are `waiting` and therefore not yet allowed onto the main channel.
 
 Once subscribed, offer/answer/ICE-candidate exchange and the participant roster (`participant.announce`/`participant.bye`) travel as client whisper events on this channel — Reverb relays them directly, no further `/api/v1` calls involved. Full protocol: [WEBRTC.md](WEBRTC.md#signaling-sequence-per-new-peer-pair).
 

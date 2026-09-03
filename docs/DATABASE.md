@@ -51,6 +51,7 @@ Indexes: unique(`meeting_uuid`), unique(`meeting_code`), index(`host_user_id`), 
 | status | enum: waiting, admitted, joined, left, removed, rejected | |
 | joined_at | timestamp nullable | |
 | left_at | timestamp nullable | |
+| admitted_at | timestamp nullable | set once, the first time the host admits this participant past the waiting room (Phase 11) — distinct from `joined_at`/`left_at`, which flip on every reconnect; lets a reconnecting participant skip the waiting room a second time once already vetted |
 | timestamps | | |
 
 Indexes: index(`meeting_id`), index(`user_id`), index(`status`), index(`guest_token`), unique(`meeting_id`, `user_id`) (one participant row per authenticated user per meeting; re-joining updates the existing row rather than duplicating it — `NULL` `user_id` values are exempt from the uniqueness check, so guests are unaffected).

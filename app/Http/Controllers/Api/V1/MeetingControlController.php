@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Events\HostControlEvent;
+use App\Events\WaitingRoomEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
@@ -49,6 +50,86 @@ class MeetingControlController extends Controller
         broadcast(new HostControlEvent($meeting, 'guests-disabled'));
 
         return response()->json(['data' => $meeting]);
+    }
+
+    public function enableWaitingRoom(Meeting $meeting): JsonResponse
+    {
+        Gate::authorize('manageSettings', $meeting);
+
+        $meeting->forceFill(['waiting_room_enabled' => true])->save();
+        broadcast(new HostControlEvent($meeting, 'waiting-room-enabled'));
+
+        return response()->json(['data' => $meeting]);
+    }
+
+    public function disableWaitingRoom(Meeting $meeting): JsonResponse
+    {
+        Gate::authorize('manageSettings', $meeting);
+
+        $meeting->forceFill(['waiting_room_enabled' => false])->save();
+        broadcast(new HostControlEvent($meeting, 'waiting-room-disabled'));
+
+        return response()->json(['data' => $meeting]);
+    }
+
+    public function waitingParticipants(Meeting $meeting): JsonResponse
+    {
+        Gate::authorize('manageParticipants', $meeting);
+
+        $participants = $meeting->participants()
+            ->where('status', MeetingParticipant::STATUS_WAITING)
+            ->with('user:id,name')
+            ->oldest()
+            ->get()
+            ->map(fn (MeetingParticipant $participant) => [
+                'id' => $participant->id,
+                'name' => $participant->guest_name ?? $participant->user?->name,
+                'role' => $participant->role,
+            ]);
+
+        return response()->json(['data' => $participants]);
+    }
+
+    public function admitParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse
+    {
+        Gate::authorize('manageParticipants', $meeting);
+        abort_if($participant->meeting_id !== $meeting->id, 404);
+
+        if ($participant->status !== MeetingParticipant::STATUS_WAITING) {
+            return response()->json(['message' => 'This participant is not currently waiting.'], 409);
+        }
+
+        $participant->forceFill(['status' => MeetingParticipant::STATUS_ADMITTED, 'admitted_at' => now()])->save();
+
+        broadcast(new WaitingRoomEvent(
+            $meeting,
+            'admitted',
+            ['target' => $participant->presenceId()],
+            forWaitingParticipant: true,
+        ));
+
+        return response()->json(['data' => $participant]);
+    }
+
+    public function rejectParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse
+    {
+        Gate::authorize('manageParticipants', $meeting);
+        abort_if($participant->meeting_id !== $meeting->id, 404);
+
+        if ($participant->status !== MeetingParticipant::STATUS_WAITING) {
+            return response()->json(['message' => 'This participant is not currently waiting.'], 409);
+        }
+
+        $participant->forceFill(['status' => MeetingParticipant::STATUS_REJECTED, 'left_at' => now()])->save();
+
+        broadcast(new WaitingRoomEvent(
+            $meeting,
+            'rejected',
+            ['target' => $participant->presenceId()],
+            forWaitingParticipant: true,
+        ));
+
+        return response()->json(['data' => $participant]);
     }
 
     public function muteParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse

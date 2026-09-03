@@ -41,6 +41,7 @@ class MeetingParticipant extends Model
         return [
             'joined_at' => 'datetime',
             'left_at' => 'datetime',
+            'admitted_at' => 'datetime',
         ];
     }
 

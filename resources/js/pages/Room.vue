@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole } from '../types';
+import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, WaitingParticipant, WaitingRoomPayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -54,6 +54,10 @@ const chatSending = ref(false);
 const unreadCount = ref(0);
 const participantsOpen = ref(false);
 const myRole = ref<ParticipantRole>('participant');
+const waitingRoomEnabled = ref(false);
+const waitingRoomOpen = ref(false);
+const waitingParticipants = ref<WaitingParticipant[]>([]);
+const waitingActionBusy = ref(false);
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
@@ -193,6 +197,14 @@ function attachSignalingListeners(): void {
             if (!chatOpen.value) {
                 unreadCount.value += 1;
             }
+        })
+        .listen('.waiting-room', (payload: WaitingRoomPayload) => {
+            if (!isHost.value) return;
+            if (payload.action === 'participant-waiting' && payload.participant) {
+                waitingParticipants.value.push(payload.participant);
+            } else if (payload.action === 'participant-left-waiting' && payload.id !== undefined) {
+                waitingParticipants.value = waitingParticipants.value.filter((p) => p.id !== payload.id);
+            }
         });
 }
 
@@ -236,6 +248,12 @@ function handleHostControl(payload: HostControlPayload): void {
         case 'guests-disabled':
             guestsAllowed.value = false;
             break;
+        case 'waiting-room-enabled':
+            waitingRoomEnabled.value = true;
+            break;
+        case 'waiting-room-disabled':
+            waitingRoomEnabled.value = false;
+            break;
     }
 }
 
@@ -269,6 +287,7 @@ onMounted(async () => {
     myRole.value = joinData.participant.role;
     meetingLocked.value = joinData.meeting.is_locked;
     guestsAllowed.value = joinData.meeting.allow_guests;
+    waitingRoomEnabled.value = joinData.meeting.waiting_room_enabled;
 
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
@@ -302,6 +321,7 @@ onMounted(async () => {
         });
 
     void loadChatHistory();
+    void loadWaitingParticipants();
 });
 
 onBeforeUnmount(() => {
@@ -482,6 +502,70 @@ async function toggleGuests(): Promise<void> {
     }
 }
 
+async function toggleWaitingRoom(): Promise<void> {
+    if (!joinData || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    // See toggleLock() above for why this captures the target value up front
+    // instead of inverting the live ref after the request resolves.
+    const wasEnabled = waitingRoomEnabled.value;
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/waiting-room/${wasEnabled ? 'disable' : 'enable'}`);
+        waitingRoomEnabled.value = !wasEnabled;
+    } catch {
+        hostActionError.value = 'Could not update the waiting room. Please try again.';
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function loadWaitingParticipants(): Promise<void> {
+    if (!joinData || !isHost.value) return;
+
+    try {
+        const { data } = await api.get<{ data: WaitingParticipant[] }>(`/meetings/${joinData.meeting.meeting_uuid}/participants/waiting`);
+        waitingParticipants.value = data.data;
+    } catch {
+        // the live .waiting-room channel event still delivers new waiters either way
+    }
+}
+
+function toggleWaitingRoomPanel(): void {
+    waitingRoomOpen.value = !waitingRoomOpen.value;
+}
+
+async function admitParticipant(participant: WaitingParticipant): Promise<void> {
+    if (!joinData || waitingActionBusy.value) return;
+    waitingActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${participant.id}/admit`);
+        waitingParticipants.value = waitingParticipants.value.filter((p) => p.id !== participant.id);
+    } catch {
+        hostActionError.value = `Could not admit ${participant.name}. Please try again.`;
+    } finally {
+        waitingActionBusy.value = false;
+    }
+}
+
+async function rejectParticipant(participant: WaitingParticipant): Promise<void> {
+    if (!joinData || waitingActionBusy.value) return;
+    waitingActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${participant.id}/reject`);
+        waitingParticipants.value = waitingParticipants.value.filter((p) => p.id !== participant.id);
+    } catch {
+        hostActionError.value = `Could not reject ${participant.name}. Please try again.`;
+    } finally {
+        waitingActionBusy.value = false;
+    }
+}
+
 async function endMeetingForAll(): Promise<void> {
     if (!joinData || hostActionBusy.value) return;
     if (!confirm('End this meeting for everyone?')) return;
@@ -567,6 +651,15 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="toggleGuests"
                 >
                     {{ guestsAllowed ? 'Disallow guests' : 'Allow guests' }}
+                </button>
+                <button
+                    type="button"
+                    :disabled="hostActionBusy"
+                    class="rounded-full px-3 py-1 border border-neutral-800 disabled:opacity-50"
+                    :class="waitingRoomEnabled ? 'bg-red-900/50 border-red-800' : 'bg-neutral-900'"
+                    @click="toggleWaitingRoom"
+                >
+                    {{ waitingRoomEnabled ? 'Disable waiting room' : 'Enable waiting room' }}
                 </button>
                 <button
                     type="button"
@@ -713,6 +806,41 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         </div>
                     </div>
                 </aside>
+
+                <aside v-if="isHost && waitingRoomOpen" class="w-80 shrink-0 border-l border-neutral-800 flex flex-col">
+                    <div class="px-3 py-2 border-b border-neutral-800 text-sm font-medium flex items-center justify-between">
+                        Waiting Room ({{ waitingParticipants.length }})
+                        <button type="button" class="text-neutral-400 hover:text-neutral-200 text-xs" @click="toggleWaitingRoomPanel">Close</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+                        <p v-if="!waitingParticipants.length" class="text-xs text-neutral-500">No one is waiting.</p>
+                        <div
+                            v-for="participant in waitingParticipants"
+                            :key="participant.id"
+                            class="flex items-center justify-between gap-2 py-2 border-b border-neutral-900"
+                        >
+                            <p class="text-sm text-neutral-100 truncate">{{ participant.name }}</p>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button
+                                    type="button"
+                                    :disabled="waitingActionBusy"
+                                    class="text-xs bg-neutral-100 text-neutral-950 rounded px-2 py-1 disabled:opacity-50"
+                                    @click="admitParticipant(participant)"
+                                >
+                                    Admit
+                                </button>
+                                <button
+                                    type="button"
+                                    :disabled="waitingActionBusy"
+                                    class="text-xs bg-neutral-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                    @click="rejectParticipant(participant)"
+                                >
+                                    Reject
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             <div class="flex items-center justify-center gap-3 p-4 border-t border-neutral-800">
@@ -749,6 +877,21 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="toggleParticipants"
                 >
                     Participants ({{ Object.keys(peers).length + 1 }})
+                </button>
+                <button
+                    v-if="isHost"
+                    type="button"
+                    class="relative rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
+                    :class="waitingRoomOpen ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"
+                    @click="toggleWaitingRoomPanel"
+                >
+                    Waiting Room
+                    <span
+                        v-if="waitingParticipants.length > 0"
+                        class="absolute -top-1.5 -right-1.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-amber-600 text-white text-[10px] leading-[1.1rem]"
+                    >
+                        {{ waitingParticipants.length }}
+                    </span>
                 </button>
                 <button
                     type="button"
