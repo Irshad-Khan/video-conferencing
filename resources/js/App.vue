@@ -20,6 +20,7 @@ async function onLogout(): Promise<void> {
                 <router-link to="/dashboard" class="text-neutral-300 hover:text-neutral-100">Dashboard</router-link>
                 <router-link to="/history" class="text-neutral-300 hover:text-neutral-100">History</router-link>
                 <router-link to="/profile" class="text-neutral-300 hover:text-neutral-100">Profile</router-link>
+                <router-link v-if="state.user.is_admin" to="/admin" class="text-neutral-300 hover:text-neutral-100">Admin</router-link>
                 <button type="button" class="text-neutral-300 hover:text-neutral-100" @click="onLogout">
                     Log out
                 </button>

@@ -293,3 +293,20 @@ Driven via a single real headless Chrome profile over CDP. Two complementary app
 ## Phase 14 (Recording, design-first)
 
 No verification checklist — this phase shipped no code (see [RECORDING.md](RECORDING.md)). Its "manual testing" is the design document itself being internally consistent with the already-shipped P2P mesh architecture ([WEBRTC.md](WEBRTC.md#model-p2p-mesh-mvp)) and with the SFU-migration trigger it defers to ([WEBRTC.md](WEBRTC.md#when-an-sfu-becomes-necessary)); `php artisan test` and `npm run build` were re-run after the documentation changes to confirm the doc-only diff didn't touch anything that affects either.
+
+## Phase 15 Verification Checklist (Admin Panel)
+
+Verified 2026-09-03, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P15-00 | Automated suite | `php artisan test` passes | PASS (136/136 tests, 455 assertions — adds `tests/Feature/Admin/{AdminAuthorizationTest,AdminUsersTest,AdminMeetingsTest,AdminStatsTest}.php` (13 cases) plus one to `LoginTest.php`) |
+| TC-P15-01 | No admin UI for a non-admin | A freshly registered user sees no "Admin" nav link and is client-side redirected to `/dashboard` if they navigate to `/admin` directly | PASS |
+| TC-P15-02 | Granting admin access | `php artisan admin:grant {email}` promotes an existing user; after their next page load, the "Admin" nav link appears and `/admin` is reachable | PASS |
+| TC-P15-03 | Users tab | Lists every user with their meeting count; Disable/Enable toggles `is_disabled` and updates the row's badge immediately | PASS |
+| TC-P15-04 | Disabled account blocked at login | A disabled user's login attempt is rejected with a "This account has been disabled." error, stays on the login page | PASS |
+| TC-P15-05 | Meetings tab | All/Active/History filter chips over every meeting across every host (not just the admin's own); Delete removes a meeting from the list | PASS |
+| TC-P15-06 | Overview tab | Shows live user/meeting/participant counts matching what the Users and Meetings tabs actually contain | PASS |
+| TC-P15-07 | Server-side authorization | A guest gets `401` and a non-admin gets `403` from every `/admin/*` endpoint; an admin succeeds | PASS (automated, `AdminAuthorizationTest`) |
+
+Driven via two real headless Chrome profiles over CDP — one for the admin, a separate one for the target user being disabled (registering the target in a second *tab* on the admin's own profile was tried first and hit exactly the cookie-sharing gotcha documented for Phase 10/11: it silently clobbered the admin's session cookie, since cookies are shared across every tab in one profile — fixed by giving the target its own profile/port, matching established practice). Admin.vue fetches each tab's data once on mount (same no-live-polling pattern as `Dashboard.vue`/`History.vue`), so the verification script reloads `/admin` after registering the target user or creating a test meeting before asserting either shows up — not a bug, just matching the page's actual (and intentional) refresh model. No application bugs were found.

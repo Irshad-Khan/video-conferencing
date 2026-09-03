@@ -2,6 +2,8 @@ export interface User {
     id: number;
     name: string;
     email: string;
+    is_admin: boolean;
+    is_disabled: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -130,4 +132,18 @@ export interface WaitingRoomPayload {
     participant?: WaitingParticipant;
     id?: number;
     target?: string;
+}
+
+export interface AdminStats {
+    users: { total: number; admins: number; disabled: number };
+    meetings: { total: number; scheduled: number; live: number; ended: number; cancelled: number };
+    participants_total: number;
+}
+
+export interface AdminUserRow extends Pick<User, 'id' | 'name' | 'email' | 'is_admin' | 'is_disabled' | 'created_at'> {
+    meetings_count: number;
+}
+
+export interface AdminMeetingRow extends Meeting {
+    host: Pick<User, 'id' | 'name' | 'email'>;
 }

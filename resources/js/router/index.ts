@@ -48,6 +48,12 @@ const router = createRouter({
             component: () => import('../pages/Profile.vue'),
             meta: { requiresAuth: true },
         },
+        {
+            path: '/admin',
+            name: 'admin',
+            component: () => import('../pages/Admin.vue'),
+            meta: { requiresAuth: true, requiresAdmin: true },
+        },
     ],
 });
 
@@ -63,6 +69,10 @@ router.beforeEach(async (to) => {
     }
 
     if (to.meta.guestOnly && state.user) {
+        return { name: 'dashboard' };
+    }
+
+    if (to.meta.requiresAdmin && !state.user?.is_admin) {
         return { name: 'dashboard' };
     }
 

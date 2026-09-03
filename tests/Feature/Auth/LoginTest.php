@@ -37,6 +37,19 @@ class LoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_a_disabled_user_cannot_login(): void
+    {
+        $user = User::factory()->disabled()->create(['password' => Hash::make('password123')]);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => $user->email,
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('email');
+        $this->assertGuest();
+    }
+
     public function test_login_fails_for_nonexistent_user(): void
     {
         $response = $this->postJson('/api/v1/auth/login', [

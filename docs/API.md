@@ -18,7 +18,9 @@ Response: `201 {"data": {"id", "name", "email", "created_at", "updated_at"}}`
 Public. Requires an `X-XSRF-TOKEN` header from a prior `GET /sanctum/csrf-cookie` call. Rate-limited to 5 attempts per email+IP combination (exponential lockout on repeated failures).
 
 Request: `{"email", "password"}`
-Response: `200 {"data": {...user}}`, or `422` on invalid credentials / lockout.
+Response: `200 {"data": {...user}}`, or `422` on invalid credentials, lockout, or a disabled account (Phase 15 — `is_disabled`, same `{"errors": {"email": [...]}}` shape as bad credentials, distinguished only by the message text: "This account has been disabled.").
+
+Every `auth:sanctum` route also re-checks `is_disabled` on each request (not just at login) via `EnsureUserIsNotDisabled` — a user disabled mid-session gets `403` and is logged out on their very next authenticated request, not only kept out of future logins.
 
 ### `POST /api/v1/auth/logout`
 
@@ -185,12 +187,42 @@ Not under `/api/v1` — this is Laravel's standard Reverb/Pusher-protocol channe
 
 Once subscribed, offer/answer/ICE-candidate exchange and the participant roster (`participant.announce`/`participant.bye`) travel as client whisper events on this channel — Reverb relays them directly, no further `/api/v1` calls involved. Full protocol: [WEBRTC.md](WEBRTC.md#signaling-sequence-per-new-peer-pair).
 
+## Admin
+
+All endpoints below require `auth:sanctum` **and** `is_admin: true` on the authenticated user — enforced by a single `EnsureUserIsAdmin` middleware wrapping the whole `/admin` route group, rather than a per-method authorization check, so every route under it is covered by construction (see [ROADMAP.md](ROADMAP.md) Phase 15: "Server-side authorization on every admin endpoint"). A non-admin gets `403`; a guest gets `401`. There is no in-app way to grant admin access — the first admin (and any afterward) is granted via `php artisan admin:grant {email}` on the server, deliberately kept out of the API surface (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+
+### `GET /api/v1/admin/stats`
+
+System-wide counts for a dashboard view: users (total/admins/disabled), meetings (total, and per-status), and total participants ever recorded.
+Response: `200 {"data": {"users": {"total", "admins", "disabled"}, "meetings": {"total", "scheduled", "live", "ended", "cancelled"}, "participants_total"}}`.
+
+### `GET /api/v1/admin/users`
+
+Every user, newest-registered-first, with a `meetings_count` (as host) alongside the normal user fields.
+Response: `200 {"data": [{...user, "meetings_count"}]}`.
+
+### `POST /api/v1/admin/users/{user}/disable` / `POST /api/v1/admin/users/{user}/enable`
+
+Toggles `is_disabled`. A disabled user is blocked from logging in (`422`, see [Authentication](#post-apiv1authlogin)) and, if already signed in, is signed out and blocked (`403`) on their very next authenticated request.
+Response: `200 {"data": {...user}}`, or `409` if an admin targets their own account via `/disable` (self-lockout guard, same pattern as a host being unable to remove themselves from their own meeting).
+
+### `GET /api/v1/admin/meetings`
+
+Every meeting across every host, newest-created-first, each with its `host` (id/name/email) eager-loaded. Unlike `GET /meetings`, this is not scoped to the authenticated user.
+Response: `200 {"data": [{...meeting, "host": {"id", "name", "email"}}]}`.
+
+### `GET /api/v1/admin/meetings/{meeting}/participants`
+
+The admin equivalent of the host-only `GET /meetings/{meeting}/participants`, for any meeting regardless of host — same response shape, same underlying `Meeting::participantHistory()` helper.
+Response: `200 {"data": [{"id", "name", "role", "status", "joined_at", "left_at", "duration_seconds"}]}`.
+
+### `DELETE /api/v1/admin/meetings/{meeting}`
+
+Deletes any meeting regardless of host, with the same live-meeting guard as the host's own `DELETE /meetings/{meeting}`.
+Response: `204 No Content`, or `409` if the meeting is live.
+
 ## Misc
 
 ### `GET /api/v1/health`
 
 Public. `200 {"status": "ok"}`. Used for container/infra health checks (see [DEPLOYMENT.md](DEPLOYMENT.md)).
-
----
-
-Admin endpoints are documented here once implemented (see [ROADMAP.md](ROADMAP.md) §11, Phase 15).

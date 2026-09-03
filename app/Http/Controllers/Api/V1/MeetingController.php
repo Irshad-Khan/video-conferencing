@@ -144,21 +144,6 @@ class MeetingController extends Controller
     {
         Gate::authorize('view', $meeting);
 
-        $participants = $meeting->participants()
-            ->with('user:id,name')
-            ->orderBy('joined_at')
-            ->orderBy('created_at')
-            ->get()
-            ->map(fn (MeetingParticipant $participant) => [
-                'id' => $participant->id,
-                'name' => $participant->guest_name ?? $participant->user?->name,
-                'role' => $participant->role,
-                'status' => $participant->status,
-                'joined_at' => $participant->joined_at,
-                'left_at' => $participant->left_at,
-                'duration_seconds' => $participant->duration_seconds,
-            ]);
-
-        return response()->json(['data' => $participants]);
+        return response()->json(['data' => $meeting->participantHistory()]);
     }
 }

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 #[Fillable(['title', 'description', 'password', 'scheduled_at', 'duration_minutes', 'waiting_room_enabled', 'allow_guests'])]
@@ -105,5 +106,30 @@ class Meeting extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(MeetingMessage::class);
+    }
+
+    /**
+     * The full participant roster with accumulated per-session duration — every row
+     * ever created for this meeting, any status, not just who's currently in the
+     * call. Shared by the host's own participants endpoint and the admin equivalent.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function participantHistory(): Collection
+    {
+        return $this->participants()
+            ->with('user:id,name')
+            ->orderBy('joined_at')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (MeetingParticipant $participant) => [
+                'id' => $participant->id,
+                'name' => $participant->guest_name ?? $participant->user?->name,
+                'role' => $participant->role,
+                'status' => $participant->status,
+                'joined_at' => $participant->joined_at,
+                'left_at' => $participant->left_at,
+                'duration_seconds' => $participant->duration_seconds,
+            ]);
     }
 }

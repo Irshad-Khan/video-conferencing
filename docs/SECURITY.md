@@ -9,10 +9,11 @@ Never trust client-supplied `user_id`, `role`, `host_id`, `meeting_id`, or `perm
 - Sanctum cookie-session auth for the first-party SPA (CSRF-protected via Laravel's standard `VerifyCsrfToken` + Sanctum's stateful-domain check); Sanctum bearer tokens available for future mobile clients on the same `/api/v1` routes.
 - Passwords hashed with bcrypt (Laravel default), never logged or returned in responses.
 - Guests get a short-lived, signed, meeting-scoped token (not a full user session) — cannot access any route outside that meeting.
+- An admin-disabled user (`is_disabled`, Phase 15) is blocked at login and, via `EnsureUserIsNotDisabled` on every `auth:sanctum` route, also cut off mid-session — an already-authenticated session doesn't stay valid just because it predates the admin's disable action.
 
 ## Authorization
 
-- Laravel Policies/Gates for every resource: `MeetingPolicy` (view/update/delete/start/end — host or co-host only), participant actions (mute/remove — host/co-host only), admin actions (`is_admin` guard).
+- Laravel Policies/Gates for every resource: `MeetingPolicy` (view/update/delete/start/end — host or co-host only), participant actions (mute/remove — host/co-host only). Admin actions (Phase 15) use a group-level `EnsureUserIsAdmin` middleware over the whole `/admin/*` route group instead of a per-method Gate call — a flat role check, not a per-resource ownership check, so wrapping the group guarantees every admin route is covered rather than depending on each controller method remembering to check.
 - Reverb private channel authorization (`routes/channels.php`) checks the requesting user/guest is an active (`admitted`/`joined`) participant of that specific meeting before allowing a subscribe — re-checked, not cached from connect time, for control events like mute/remove. Guests authenticate this one request via their `X-Guest-Token` header (resolved to their `meeting_participants` row by `AuthenticateBroadcastGuest`, since they have no Sanctum session); a `left`/`removed`/`rejected` guest's token stops authorizing immediately.
 - Host-only WebSocket-triggered actions (mute participant, remove participant, end meeting, lock) are validated against the DB role, never against a client-sent "I am host" flag.
 

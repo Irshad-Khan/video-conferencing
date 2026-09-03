@@ -13,6 +13,12 @@ docker compose exec app php artisan migrate
 
 Frontend assets are served via the `vite` service's dev server (HMR) in development; `docker compose exec app php artisan reverb:start` runs as its own `reverb` service for WebSocket signaling.
 
+To reach the admin panel (Phase 15), grant an existing registered user admin access — there's deliberately no in-app or API way to do this, so it's a server-side-only action:
+
+```bash
+docker compose exec app php artisan admin:grant user@example.com
+```
+
 ## Production Topology
 
 Same Docker Compose services, with these changes:
