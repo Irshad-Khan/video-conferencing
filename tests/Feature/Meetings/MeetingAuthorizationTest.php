@@ -5,6 +5,7 @@ namespace Tests\Feature\Meetings;
 use App\Models\Meeting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class MeetingAuthorizationTest extends TestCase
@@ -69,6 +70,17 @@ class MeetingAuthorizationTest extends TestCase
         $this->actingAs($stranger)->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/end")->assertStatus(403);
 
         $this->assertSame(Meeting::STATUS_SCHEDULED, $meeting->fresh()->status);
+    }
+
+    public function test_an_unknown_meeting_uuid_returns_404_not_403(): void
+    {
+        $host = User::factory()->create();
+        $unknownUuid = (string) Str::uuid();
+
+        $this->actingAs($host)->getJson("/api/v1/meetings/{$unknownUuid}")->assertStatus(404);
+        $this->actingAs($host)->putJson("/api/v1/meetings/{$unknownUuid}", ['title' => 'x'])->assertStatus(404);
+        $this->actingAs($host)->deleteJson("/api/v1/meetings/{$unknownUuid}")->assertStatus(404);
+        $this->actingAs($host)->getJson("/api/v1/meetings/{$unknownUuid}/participants")->assertStatus(404);
     }
 
     public function test_the_host_can_view_update_and_delete_their_own_meeting(): void

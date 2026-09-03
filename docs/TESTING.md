@@ -2,13 +2,38 @@
 
 ## Automated Tests
 
-Located under `tests/Unit`, `tests/Feature`, `tests/Browser`. Run inside Docker:
+Located under `tests/Feature` (149 tests as of Phase 17) and `tests/Unit` (9). Run inside Docker:
 
 ```bash
 docker compose exec app php artisan test
 ```
 
-Coverage grows phase-by-phase (see [ROADMAP.md](ROADMAP.md) §11 for the per-phase test checklist): authentication, meeting CRUD/lifecycle, join flow, permissions (host/co-host/participant/guest/admin), chat, participant management. WebRTC media itself is not asserted in automated tests (see WEBRTC.md's "Known Constraints") — it is covered manually below.
+There is deliberately no `tests/Browser`/Laravel Dusk suite — real-media WebRTC flows (camera/mic, screen share, multi-peer mesh) can't be exercised through Dusk's real-browser automation any more cheaply than the CDP-driven manual procedure this project already uses per phase (see "Manual End-to-End Testing" below and each phase's Verification Checklist), and adding a second, redundant browser-automation *framework* on top of that wouldn't buy additional coverage — see [WEBRTC.md](WEBRTC.md#known-constraints).
+
+**Unit vs. Feature.** `tests/Unit` holds framework-free tests (`PHPUnit\Framework\TestCase`, not Laravel's — no database, no HTTP kernel, no service container) for pure logic that doesn't need any of that: `MeetingPolicy`'s six abilities checked directly against plain (unsaved, `forceFill()`-populated) model instances, and two model methods (`MeetingParticipant::presenceId()`, `MeetingMessage::senderName()`) that only touch already-set attributes/relations. Everything else in this app is either a controller (needs the HTTP kernel + database to mean anything) or an Eloquent model method that goes through a cast requiring the service container (e.g. `Meeting`'s `password` cast calls the `Hash` facade even just to *set* a value in memory — confirmed by trying to unit-test `hasPassword` framework-free and hitting "A facade root has not been set") — those stay Feature-tested instead, which is the right tool for them, not a gap.
+
+Coverage grows phase-by-phase (see [ROADMAP.md](ROADMAP.md) §11 for the per-phase test checklist): authentication, meeting CRUD/lifecycle, join flow, permissions (host/co-host/participant/guest/admin), chat, participant management, meeting history, admin panel, rate limiting. WebRTC media itself is not asserted in automated tests (see WEBRTC.md's "Known Constraints") — it is covered manually below.
+
+## Test Coverage Matrix
+
+Which automated test file(s) cover which roadmap phase's feature area — built up phase-by-phase, consolidated here in Phase 17 as the actual answer to "test suites for auth, meetings, permissions, chat, participants."
+
+| Area | Phase(s) | Feature test file(s) | Unit test file(s) |
+|---|---|---|---|
+| Auth (register/login/logout/profile) | 2, 15 | `Auth/{RegistrationTest,LoginTest,LogoutTest,ProfileTest}.php` | — |
+| Meeting CRUD/lifecycle | 3 | `Meetings/{MeetingCreationTest,MeetingLifecycleTest,MeetingListTest}.php` | — |
+| Meeting scheduling (duration, dashboard grouping) | 12 | `Meetings/MeetingCreationTest.php` (duration + `MeetingScheduled` event) | — |
+| Join flow (auth/guest/password/waiting room) | 4, 11 | `Meetings/{MeetingJoinTest,MeetingWaitingRoomTest}.php` | — |
+| Permissions / authorization boundaries | 3, 7, 11, 15, 16 | `Meetings/{MeetingAuthorizationTest,MeetingControlsAuthorizationTest,MeetingWaitingRoomTest}.php`, `Admin/AdminAuthorizationTest.php` | `Policies/MeetingPolicyTest.php` |
+| Reverb channel auth (private-meeting/waiting-room) | 5, 11 | `Meetings/MeetingBroadcastAuthTest.php` | — |
+| Meeting controls (mute/remove/lock/guests/waiting-room toggle) | 7, 11 | `Meetings/MeetingControlsTest.php` | — |
+| Chat | 9 | `Meetings/MeetingChatTest.php` | `Models/MeetingMessageTest.php` (`senderName()`) |
+| Participants / meeting history / duration tracking | 13 | `Meetings/MeetingHistoryTest.php` | `Models/MeetingParticipantTest.php` (`presenceId()`) |
+| Admin panel (users, meetings, stats) | 15 | `Admin/{AdminUsersTest,AdminMeetingsTest,AdminStatsTest,AdminAuthorizationTest}.php` | — |
+| Rate limiting | 16 | `RateLimitingTest.php`, `Auth/RegistrationTest.php`, `Auth/LoginTest.php` | — |
+| Health/infra | 1 | `HealthCheckTest.php` | — |
+
+Screen sharing (Phase 8) has no Feature/Unit tests — it's purely client-side WebRTC track-replacement with no backend route, covered entirely by its manual Verification Checklist instead.
 
 ## Manual End-to-End Testing
 
@@ -42,20 +67,20 @@ Browser 3 → Participant
 
 | ID | Test | Expected | Actual | Status |
 |----|------|----------|--------|--------|
-| TC-001 | Create meeting | Meeting created, code generated | — | PENDING |
-| TC-002 | Join meeting | Participant joins successfully | — | PENDING |
-| TC-003 | Camera | Local + remote video visible | — | PENDING |
-| TC-004 | Microphone | Local + remote audio audible | — | PENDING |
-| TC-005 | Multi-join | Participant 2 joins, mesh updates | — | PENDING |
-| TC-006 | Mute | Icon updates, remote audio stops | — | PENDING |
-| TC-007 | Camera off | Icon updates, remote tile blank | — | PENDING |
-| TC-008 | Chat | Message delivered to all participants | — | PENDING |
-| TC-009 | Screen share | Remote sees shared screen, camera restores on stop | — | PENDING |
-| TC-010 | Host removes participant | Removed participant disconnected | — | PENDING |
-| TC-011 | Host ends meeting | All disconnected, status = ended | — | PENDING |
-| TC-012 | Meeting history | Participants/duration/status correct | — | PENDING |
+| TC-001 | Create meeting | Meeting created, code generated | Verified Phase 3 | PASS — see [Phase 3 checklist](#phase-3-verification-checklist-meeting-management) |
+| TC-002 | Join meeting | Participant joins successfully | Verified Phase 4/5 | PASS — see [Phase 5 checklist](#phase-5-verification-checklist-webrtc-audiovideo) |
+| TC-003 | Camera | Local + remote video visible | Verified Phase 5 | PASS — see [Phase 5 checklist](#phase-5-verification-checklist-webrtc-audiovideo) |
+| TC-004 | Microphone | Local + remote audio audible | Verified Phase 5 | PASS — see [Phase 5 checklist](#phase-5-verification-checklist-webrtc-audiovideo) |
+| TC-005 | Multi-join | Participant 2 joins, mesh updates | Verified Phase 6 at 2–6 participants | PASS — see [Phase 6 checklist](#phase-6-verification-checklist-multi-participant-video) |
+| TC-006 | Mute | Icon updates, remote audio stops | Verified Phase 5 (local) + Phase 7 (host force-mute) | PASS — see [Phase 7 checklist](#phase-7-verification-checklist-meeting-controls) |
+| TC-007 | Camera off | Icon updates, remote tile blank | Verified Phase 5 | PASS — see [Phase 5 checklist](#phase-5-verification-checklist-webrtc-audiovideo) |
+| TC-008 | Chat | Message delivered to all participants | Verified Phase 9 | PASS — see [Phase 9 checklist](#phase-9-verification-checklist-real-time-chat) |
+| TC-009 | Screen share | Remote sees shared screen, camera restores on stop | Verified Phase 8 | PASS — see [Phase 8 checklist](#phase-8-verification-checklist-screen-sharing) |
+| TC-010 | Host removes participant | Removed participant disconnected | Verified Phase 7 | PASS — see [Phase 7 checklist](#phase-7-verification-checklist-meeting-controls) |
+| TC-011 | Host ends meeting | All disconnected, status = ended | Verified Phase 7 | PASS — see [Phase 7 checklist](#phase-7-verification-checklist-meeting-controls) |
+| TC-012 | Meeting history | Participants/duration/status correct | Verified Phase 13 | PASS — see [Phase 13 checklist](#phase-13-verification-checklist-meeting-history) |
 
-This table is updated as each phase is manually verified; entries move from PENDING to PASS/FAIL with the date and tester noted. Any FAIL is logged as a bug in [BUGS.md](BUGS.md) before the corresponding roadmap checkbox may be marked DONE.
+This table was left showing all 12 rows as PENDING from Phase 1 through Phase 16 — each phase added its own, more detailed "Phase N Verification Checklist" below instead of ever coming back to update this one, so it silently went stale despite every row actually having been verified along the way. Corrected in Phase 17 as part of consolidating the testing documentation; going forward, treat the per-phase checklists as the source of truth for what's actually been verified — this table is a cross-referenced index into them, not an independent record.
 
 ## Phase 1 Verification Checklist (Docker Foundation)
 
@@ -324,3 +349,17 @@ Verified 2026-09-03, mcsirshad95@gmail.com. This phase is an audit, not a new fe
 | TC-P16-04 | XSS/SQLi/CSRF re-confirmed by grep, not just memory | `grep -rn 'v-html\|innerHTML' resources/js/` and `grep -rn 'DB::raw\|whereRaw\|selectRaw\|DB::statement' app/` both return nothing; no CSRF `$except`/bypass exists anywhere in `bootstrap/app.php` or `app/Http/` | PASS |
 
 Rate-limiting behavior was verified two ways: the new `RateLimitingTest.php` asserts the `X-RateLimit-Limit` header is present on routes that had none before (a cheap, fast regression check — deliberately not firing 120+ requests in a test just to trip the general ceiling, since Laravel's own `ThrottleRequests` middleware is already well-tested and the real risk being guarded against is someone accidentally removing `throttleApi()` from `bootstrap/app.php`), and a single real headless-Chrome pass over CDP confirmed the new throttles don't break any normal single-attempt user flow. No other application bugs were found beyond the two logged in [BUGS.md](BUGS.md) (BUG-011, and the `SESSION_SECURE_COOKIE` documentation gap noted in SECURITY.md's audit write-up).
+
+## Phase 17 Verification Checklist (Testing)
+
+Verified 2026-09-03, mcsirshad95@gmail.com. Like Phase 16, this is a consolidation/audit phase rather than a new feature, so most of the "verification" here is the coverage audit itself (see the [Test Coverage Matrix](#test-coverage-matrix) above), not a new user-facing flow to click through.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P17-00 | Automated suite | `php artisan test` passes | PASS (149/149 tests, 498 assertions — adds `tests/Unit/{Policies/MeetingPolicyTest,Models/MeetingParticipantTest,Models/MeetingMessageTest}.php` (9 cases) and one 404-boundary case to `MeetingAuthorizationTest.php`; removes the never-touched `tests/Unit/ExampleTest.php` skeleton stub) |
+| TC-P17-01 | Real `tests/Unit` coverage exists | Before this phase, `tests/Unit` held only the default Laravel skeleton's placeholder (`assertTrue(true)`) — a real gap for a roadmap item literally named "Unit... test suites". Now covers `MeetingPolicy` (all six abilities) and two pure model methods, framework-free (no DB, no HTTP kernel) | PASS |
+| TC-P17-02 | Coverage audit finds no functional gap | Every controller method cross-referenced against existing Feature test files (`grep -rn 'public function'` vs. test file inventory); one minor gap found (unknown-`meeting_uuid` returning `404` vs `403` on the host's own CRUD endpoints was implicitly relied on via Laravel's route-model-binding but never explicitly asserted) and closed | PASS |
+| TC-P17-03 | Stale documentation corrected | `TESTING.md` and `ARCHITECTURE.md` both referenced a `tests/Browser` directory that was never actually created (the project chose manual CDP verification instead, back in Phase 5) — corrected to state and explain that choice rather than pointing at a directory that doesn't exist | PASS |
+| TC-P17-04 | Manual WebRTC procedures are already complete | Every phase from 5 through 15 that touched the browser has its own Verification Checklist in this file already | PASS (no new work — this bullet was already satisfied continuously, phase by phase; confirmed by re-reading every existing checklist section in this file during this pass) |
+
+A genuine methodology catch during this pass, not logged as an app bug since no application code was ever wrong — a *test-writing* mistake caught before it shipped: an early draft of the `MeetingPolicy` unit test constructed fixtures with `new User(['id' => 1])`, assuming constructor mass-assignment would set `id`. It silently didn't — `id` isn't in `User`'s `#[Fillable(...)]` list — so both the "host" and "meeting" fixtures ended up with `null` ids, and the policy check (`null === null`) passed for *any* pairing, including ones that shouldn't have matched. Caught by writing a probe test that intentionally used a mismatched id and asserting `assertFalse` — it came back `true`. Fixed by using `forceFill()` for test fixtures throughout (the same pattern the app itself uses for non-fillable internal fields), and left as a code comment in `MeetingPolicyTest.php` so the next person writing a similar fixture doesn't repeat it.

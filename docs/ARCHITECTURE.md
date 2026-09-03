@@ -42,7 +42,7 @@ Standard Laravel layout (see project root) plus:
 - `docker/` — Dockerfiles and service configs (php, nginx, mysql init)
 - `docs/` — this documentation set
 - `resources/js/` — Vue 3 SPA source
-- `tests/Feature`, `tests/Unit`, `tests/Browser` — automated test suites
+- `tests/Feature`, `tests/Unit` — automated test suites (see [TESTING.md](TESTING.md) for why there's no `tests/Browser`/Dusk suite)
 
 ## Related Docs
 
