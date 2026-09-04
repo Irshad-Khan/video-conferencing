@@ -10,6 +10,26 @@ const { state } = useAuth();
 const router = useRouter();
 
 const joinCode = ref('');
+const copiedCode = ref('');
+
+const initials = computed(() => {
+    const name = state.user?.name?.trim() ?? '';
+    if (!name) return '?';
+    const parts = name.split(/\s+/);
+    return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+});
+
+async function copyCode(code: string): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(code);
+        copiedCode.value = code;
+        setTimeout(() => {
+            if (copiedCode.value === code) copiedCode.value = '';
+        }, 1500);
+    } catch {
+        // clipboard permission denied or unsupported — the code is still visible to copy manually
+    }
+}
 
 function goToJoin(): void {
     const code = joinCode.value.trim();
@@ -71,6 +91,8 @@ const past = computed(() =>
         .filter((m: Meeting) => m.status === 'ended' || m.status === 'cancelled')
         .sort((a: Meeting, b: Meeting) => b.updated_at.localeCompare(a.updated_at)),
 );
+
+const upcomingCount = computed(() => today.value.length + tomorrow.value.length + upcoming.value.length);
 
 function formatDuration(minutes: number | null): string | null {
     if (!minutes) return null;
@@ -220,34 +242,74 @@ function formatDate(iso: string | null): string {
 
 <template>
     <div class="max-w-5xl mx-auto px-6 py-10 space-y-8">
-        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
-            <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-indigo-600">Dashboard</p>
-                <h1 class="text-2xl font-semibold mt-1 text-slate-900">Welcome back, {{ state.user?.name }}</h1>
-                <p class="text-slate-500 mt-1 text-sm">Here's what's happening with your meetings.</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <form class="flex items-center gap-2" @submit.prevent="goToJoin">
-                    <input
-                        v-model="joinCode"
-                        type="text"
-                        placeholder="Enter a meeting code"
-                        class="rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
-                    />
+        <div class="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-6 sm:p-8">
+            <div class="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-gradient-to-br from-indigo-200 via-fuchsia-100 to-transparent opacity-60 blur-2xl"></div>
+            <div class="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-gradient-to-tr from-sky-100 to-transparent opacity-50 blur-2xl"></div>
+
+            <div class="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+                <div class="flex items-center gap-4">
+                    <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white text-base font-semibold shadow-sm shadow-indigo-200">
+                        {{ initials }}
+                    </span>
+                    <div>
+                        <p class="text-xs font-medium uppercase tracking-wide text-indigo-600">Dashboard</p>
+                        <h1 class="text-2xl font-semibold mt-0.5 text-slate-900">Welcome back, {{ state.user?.name }}</h1>
+                        <p class="text-slate-500 mt-0.5 text-sm">Here's what's happening with your meetings.</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <form class="flex items-center gap-2" @submit.prevent="goToJoin">
+                        <input
+                            v-model="joinCode"
+                            type="text"
+                            placeholder="Enter a meeting code"
+                            class="rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                        />
+                        <button
+                            type="submit"
+                            class="rounded-md border border-slate-300 bg-white text-sm font-medium px-4 py-2 text-slate-700 hover:bg-slate-100 transition-colors"
+                        >
+                            Join
+                        </button>
+                    </form>
                     <button
-                        type="submit"
-                        class="rounded-md border border-slate-300 bg-white text-sm font-medium px-4 py-2 text-slate-700 hover:bg-slate-100 transition-colors"
+                        type="button"
+                        class="rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium px-4 py-2 shadow-sm shadow-indigo-200"
+                        @click="openCreateForm"
                     >
-                        Join
+                        + New meeting
                     </button>
-                </form>
-                <button
-                    type="button"
-                    class="rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium px-4 py-2 shadow-sm shadow-indigo-200"
-                    @click="openCreateForm"
-                >
-                    + New meeting
-                </button>
+                </div>
+            </div>
+
+            <div v-if="!loading" class="relative mt-6 grid grid-cols-3 gap-3 border-t border-slate-100 pt-5">
+                <div class="flex items-center gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </span>
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ meetings.length }}</p>
+                        <p class="text-xs text-slate-500 mt-1">Total meetings</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                    </span>
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ upcomingCount }}</p>
+                        <p class="text-xs text-slate-500 mt-1">Upcoming</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+                    </span>
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ live.length }}</p>
+                        <p class="text-xs text-slate-500 mt-1">Live now</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -367,11 +429,19 @@ function formatDate(iso: string | null): string {
                 <div
                     v-for="meeting in live"
                     :key="meeting.id"
-                    class="border border-emerald-200 bg-emerald-50 rounded-xl p-4 flex items-center justify-between"
+                    class="border border-emerald-200 border-l-4 border-l-emerald-400 bg-emerald-50 rounded-xl p-4 flex items-center justify-between"
                 >
                     <div>
                         <p class="font-medium text-slate-900">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-500 mt-1">Code: {{ meeting.meeting_code }}</p>
+                        <button
+                            type="button"
+                            class="mt-1.5 inline-flex items-center gap-1 rounded font-mono text-xs bg-white border border-emerald-200 text-slate-600 px-1.5 py-0.5 hover:border-emerald-400 transition-colors"
+                            @click="copyCode(meeting.meeting_code)"
+                        >
+                            {{ meeting.meeting_code }}
+                            <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                            <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button
@@ -394,24 +464,47 @@ function formatDate(iso: string | null): string {
             </section>
 
             <section v-for="group in [
-                { label: 'Today', items: today, empty: 'No meetings scheduled for today.' },
-                { label: 'Tomorrow', items: tomorrow, empty: 'No meetings scheduled for tomorrow.' },
-                { label: 'Upcoming', items: upcoming, empty: 'No later meetings scheduled.' },
+                { label: 'Today', items: today, empty: 'Nothing on your schedule today — enjoy the calm, or start an instant meeting.', dot: 'bg-indigo-400' },
+                { label: 'Tomorrow', items: tomorrow, empty: 'Nothing lined up for tomorrow yet.', dot: 'bg-violet-400' },
+                { label: 'Upcoming', items: upcoming, empty: 'No later meetings scheduled.', dot: 'bg-sky-400' },
             ]" :key="group.label" class="space-y-3">
-                <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">{{ group.label }}</h2>
-                <p v-if="!group.items.length" class="text-sm text-slate-400">{{ group.empty }}</p>
+                <h2 class="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wide">
+                    <span class="h-1.5 w-1.5 rounded-full" :class="group.dot"></span>
+                    {{ group.label }}
+                    <span v-if="group.items.length" class="text-slate-300 normal-case font-normal">· {{ group.items.length }}</span>
+                </h2>
+                <div v-if="!group.items.length" class="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/></svg>
+                    {{ group.empty }}
+                </div>
                 <div
                     v-for="meeting in group.items"
                     :key="meeting.id"
-                    class="border border-slate-200 bg-white rounded-xl p-4 flex items-center justify-between gap-4 hover:shadow-sm transition-shadow"
+                    class="border border-slate-200 border-l-4 border-l-indigo-200 bg-white rounded-xl p-4 flex items-center justify-between gap-4 hover:shadow-sm hover:border-l-indigo-400 transition-all"
                 >
                     <div>
                         <p class="font-medium text-slate-900">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-500 mt-1">
-                            {{ formatDate(meeting.scheduled_at) }}
-                            <template v-if="formatDuration(meeting.duration_minutes)"> · {{ formatDuration(meeting.duration_minutes) }}</template>
-                            · Code: {{ meeting.meeting_code }}
-                        </p>
+                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                {{ formatDate(meeting.scheduled_at) }}
+                            </span>
+                            <template v-if="formatDuration(meeting.duration_minutes)">
+                                <span class="inline-flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                    {{ formatDuration(meeting.duration_minutes) }}
+                                </span>
+                            </template>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded font-mono bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 hover:border-indigo-300 transition-colors"
+                                @click="copyCode(meeting.meeting_code)"
+                            >
+                                {{ meeting.meeting_code }}
+                                <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button
@@ -451,7 +544,10 @@ function formatDate(iso: string | null): string {
 
             <section class="space-y-3">
                 <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">Past</h2>
-                <p v-if="!past.length" class="text-sm text-slate-400">No past meetings yet.</p>
+                <div v-if="!past.length" class="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                    No past meetings yet — your finished meetings will show up here.
+                </div>
                 <div
                     v-for="meeting in past"
                     :key="meeting.id"
