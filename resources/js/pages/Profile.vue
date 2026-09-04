@@ -57,44 +57,44 @@ async function onSubmit(): Promise<void> {
 
 <template>
     <div class="max-w-md mx-auto px-6 py-12 space-y-6">
-        <h1 class="text-xl font-semibold text-neutral-100">Profile</h1>
+        <h1 class="text-xl font-semibold text-slate-100">Profile</h1>
 
         <form class="space-y-4" @submit.prevent="onSubmit">
             <div>
-                <label for="name" class="block text-sm text-neutral-300 mb-1">Name</label>
+                <label for="name" class="block text-sm text-slate-300 mb-1">Name</label>
                 <input
                     id="name"
                     v-model="name"
                     type="text"
                     required
-                    class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                    class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                 />
                 <p v-if="errors.name" class="text-sm text-red-400 mt-1">{{ errors.name[0] }}</p>
             </div>
 
             <div>
-                <label for="email" class="block text-sm text-neutral-300 mb-1">Email</label>
+                <label for="email" class="block text-sm text-slate-300 mb-1">Email</label>
                 <input
                     id="email"
                     v-model="email"
                     type="email"
                     required
-                    class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                    class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                 />
                 <p v-if="errors.email" class="text-sm text-red-400 mt-1">{{ errors.email[0] }}</p>
             </div>
 
-            <fieldset class="border border-neutral-800 rounded-md p-4 space-y-4">
-                <legend class="text-sm text-neutral-400 px-1">Change password (optional)</legend>
+            <fieldset class="border border-slate-800 rounded-md p-4 space-y-4">
+                <legend class="text-sm text-slate-400 px-1">Change password (optional)</legend>
 
                 <div>
-                    <label for="current_password" class="block text-sm text-neutral-300 mb-1">Current password</label>
+                    <label for="current_password" class="block text-sm text-slate-300 mb-1">Current password</label>
                     <input
                         id="current_password"
                         v-model="currentPassword"
                         type="password"
                         autocomplete="current-password"
-                        class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                        class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     />
                     <p v-if="errors.current_password" class="text-sm text-red-400 mt-1">
                         {{ errors.current_password[0] }}
@@ -102,19 +102,19 @@ async function onSubmit(): Promise<void> {
                 </div>
 
                 <div>
-                    <label for="password" class="block text-sm text-neutral-300 mb-1">New password</label>
+                    <label for="password" class="block text-sm text-slate-300 mb-1">New password</label>
                     <input
                         id="password"
                         v-model="password"
                         type="password"
                         autocomplete="new-password"
-                        class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                        class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     />
                     <p v-if="errors.password" class="text-sm text-red-400 mt-1">{{ errors.password[0] }}</p>
                 </div>
 
                 <div>
-                    <label for="password_confirmation" class="block text-sm text-neutral-300 mb-1">
+                    <label for="password_confirmation" class="block text-sm text-slate-300 mb-1">
                         Confirm new password
                     </label>
                     <input
@@ -122,7 +122,7 @@ async function onSubmit(): Promise<void> {
                         v-model="passwordConfirmation"
                         type="password"
                         autocomplete="new-password"
-                        class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                        class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     />
                 </div>
             </fieldset>
@@ -132,7 +132,7 @@ async function onSubmit(): Promise<void> {
             <button
                 type="submit"
                 :disabled="submitting"
-                class="w-full rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium py-2 disabled:opacity-50"
+                class="w-full rounded-md bg-indigo-600 text-white hover:bg-indigo-500 text-sm font-medium py-2 disabled:opacity-50"
             >
                 {{ submitting ? 'Saving…' : 'Save changes' }}
             </button>

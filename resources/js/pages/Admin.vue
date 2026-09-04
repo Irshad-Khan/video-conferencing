@@ -143,16 +143,16 @@ function capitalize(text: string): string {
     <div class="max-w-4xl mx-auto px-6 py-12 space-y-6">
         <div>
             <h1 class="text-xl font-semibold">Admin panel</h1>
-            <p class="text-neutral-400 mt-1 text-sm">Users, meetings, and system stats</p>
+            <p class="text-slate-400 mt-1 text-sm">Users, meetings, and system stats</p>
         </div>
 
-        <div class="flex items-center gap-2 border-b border-neutral-800 pb-2">
+        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
             <button
                 v-for="t in (['overview', 'users', 'meetings'] as const)"
                 :key="t"
                 type="button"
                 class="text-sm px-3 py-1.5 rounded-md capitalize"
-                :class="tab === t ? 'bg-neutral-100 text-neutral-950' : 'text-neutral-400 hover:text-neutral-100'"
+                :class="tab === t ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'text-slate-400 hover:text-slate-100'"
                 @click="tab = t"
             >
                 {{ t }}
@@ -162,30 +162,30 @@ function capitalize(text: string): string {
         <section v-if="tab === 'overview'" class="space-y-4">
             <p v-if="statsError" class="text-sm text-red-400">{{ statsError }}</p>
             <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Users</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Users</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.users.total }}</p>
-                    <p class="text-xs text-neutral-500 mt-1">{{ stats.users.admins }} admin(s) · {{ stats.users.disabled }} disabled</p>
+                    <p class="text-xs text-slate-500 mt-1">{{ stats.users.admins }} admin(s) · {{ stats.users.disabled }} disabled</p>
                 </div>
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Meetings</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Meetings</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.meetings.total }}</p>
-                    <p class="text-xs text-neutral-500 mt-1">{{ stats.meetings.live }} live now</p>
+                    <p class="text-xs text-slate-500 mt-1">{{ stats.meetings.live }} live now</p>
                 </div>
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Total participants</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Total participants</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.participants_total }}</p>
                 </div>
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Scheduled</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Scheduled</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.meetings.scheduled }}</p>
                 </div>
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Ended</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Ended</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.meetings.ended }}</p>
                 </div>
-                <div class="border border-neutral-800 rounded-md p-4">
-                    <p class="text-xs text-neutral-400 uppercase tracking-wide">Cancelled</p>
+                <div class="border border-slate-800 rounded-md p-4">
+                    <p class="text-xs text-slate-400 uppercase tracking-wide">Cancelled</p>
                     <p class="text-2xl font-semibold mt-1">{{ stats.meetings.cancelled }}</p>
                 </div>
             </div>
@@ -196,20 +196,20 @@ function capitalize(text: string): string {
             <div
                 v-for="user in users"
                 :key="user.id"
-                class="border border-neutral-800 rounded-md p-4 flex items-center justify-between gap-4"
+                class="border border-slate-800 rounded-md p-4 flex items-center justify-between gap-4"
             >
                 <div>
                     <p class="font-medium flex items-center gap-2">
                         {{ user.name }}
-                        <span v-if="user.is_admin" class="text-xs text-neutral-400">Admin</span>
+                        <span v-if="user.is_admin" class="text-xs text-slate-400">Admin</span>
                         <span v-if="user.is_disabled" class="text-xs text-red-400">Disabled</span>
                     </p>
-                    <p class="text-xs text-neutral-400 mt-1">{{ user.email }} · {{ user.meetings_count }} meeting(s)</p>
+                    <p class="text-xs text-slate-400 mt-1">{{ user.email }} · {{ user.meetings_count }} meeting(s)</p>
                 </div>
                 <button
                     type="button"
                     :disabled="userActionId === user.id"
-                    class="text-sm rounded-md border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800 disabled:opacity-50 shrink-0"
+                    class="text-sm rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50 shrink-0"
                     @click="toggleUserDisabled(user)"
                 >
                     {{ user.is_disabled ? 'Enable' : 'Disable' }}
@@ -225,21 +225,21 @@ function capitalize(text: string): string {
                     :key="f"
                     type="button"
                     class="text-xs px-3 py-1 rounded-full capitalize"
-                    :class="meetingFilter === f ? 'bg-neutral-100 text-neutral-950' : 'border border-neutral-800 text-neutral-400 hover:text-neutral-100'"
+                    :class="meetingFilter === f ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'border border-slate-800 text-slate-400 hover:text-slate-100'"
                     @click="meetingFilter = f"
                 >
                     {{ f }}
                 </button>
             </div>
 
-            <p v-if="meetingsLoading" class="text-sm text-neutral-400">Loading…</p>
-            <p v-else-if="!filteredMeetings.length" class="text-sm text-neutral-500">No meetings in this filter.</p>
+            <p v-if="meetingsLoading" class="text-sm text-slate-400">Loading…</p>
+            <p v-else-if="!filteredMeetings.length" class="text-sm text-slate-500">No meetings in this filter.</p>
 
-            <div v-for="meeting in filteredMeetings" :key="meeting.id" class="border border-neutral-800 rounded-md overflow-hidden">
+            <div v-for="meeting in filteredMeetings" :key="meeting.id" class="border border-slate-800 rounded-md overflow-hidden">
                 <div class="p-4 flex items-center justify-between gap-4">
                     <button type="button" class="text-left flex-1" @click="toggleExpanded(meeting)">
                         <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-neutral-400 mt-1">
+                        <p class="text-xs text-slate-400 mt-1">
                             {{ capitalize(meeting.status) }} · Host: {{ meeting.host.name }} · {{ formatDate(meeting.scheduled_at) }}
                         </p>
                     </button>
@@ -253,16 +253,16 @@ function capitalize(text: string): string {
                     </button>
                 </div>
 
-                <div v-if="expandedMeetingId === meeting.id" class="border-t border-neutral-800 p-4 space-y-2">
-                    <p v-if="participantsLoading === meeting.id" class="text-sm text-neutral-400">Loading participants…</p>
-                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-neutral-500">No one joined this meeting.</p>
+                <div v-if="expandedMeetingId === meeting.id" class="border-t border-slate-800 p-4 space-y-2">
+                    <p v-if="participantsLoading === meeting.id" class="text-sm text-slate-400">Loading participants…</p>
+                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-slate-500">No one joined this meeting.</p>
                     <div
                         v-for="p in participants[meeting.id]"
                         :key="p.id"
-                        class="flex items-center justify-between text-sm py-1.5 border-b border-neutral-900 last:border-b-0"
+                        class="flex items-center justify-between text-sm py-1.5 border-b border-slate-900 last:border-b-0"
                     >
                         <span>{{ p.name ?? 'Unknown' }}</span>
-                        <div class="text-xs text-neutral-400 flex items-center gap-3">
+                        <div class="text-xs text-slate-400 flex items-center gap-3">
                             <span class="capitalize">{{ p.status }}</span>
                             <span>{{ formatSeconds(p.duration_seconds) }}</span>
                         </div>

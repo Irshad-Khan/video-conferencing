@@ -35,6 +35,7 @@ const router = createRouter({
             path: '/meeting/:code/room',
             name: 'room',
             component: () => import('../pages/Room.vue'),
+            meta: { hideChrome: true },
         },
         {
             path: '/history',

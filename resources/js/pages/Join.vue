@@ -142,23 +142,23 @@ async function leaveMeeting(): Promise<void> {
 </script>
 
 <template>
-    <div class="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center px-6">
+    <div class="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6">
         <div class="w-full max-w-sm space-y-6">
-            <p v-if="loading" class="text-sm text-neutral-400">Loading…</p>
+            <p v-if="loading" class="text-sm text-slate-400">Loading…</p>
 
             <div v-else-if="notFound" class="space-y-2">
                 <h1 class="text-xl font-semibold">Meeting not found</h1>
-                <p class="text-sm text-neutral-400">Check the meeting code and try again.</p>
+                <p class="text-sm text-slate-400">Check the meeting code and try again.</p>
             </div>
 
             <div v-else-if="rejected" class="space-y-2">
                 <h1 class="text-xl font-semibold">Not admitted</h1>
-                <p class="text-sm text-neutral-400">The host did not admit you to this meeting.</p>
+                <p class="text-sm text-slate-400">The host did not admit you to this meeting.</p>
             </div>
 
             <div v-else-if="joined" class="space-y-4">
                 <h1 class="text-xl font-semibold">You're in</h1>
-                <p class="text-sm text-neutral-400">
+                <p class="text-sm text-slate-400">
                     {{
                         joined.participant.status === 'waiting'
                             ? "You're in the waiting room. The host will let you in shortly."
@@ -168,7 +168,7 @@ async function leaveMeeting(): Promise<void> {
                 <button
                     type="button"
                     :disabled="leaving"
-                    class="w-full rounded-md border border-neutral-800 text-sm font-medium py-2 disabled:opacity-50"
+                    class="w-full rounded-md border border-slate-800 text-sm font-medium py-2 disabled:opacity-50"
                     @click="leaveMeeting"
                 >
                     {{ leaving ? 'Leaving…' : 'Leave meeting' }}
@@ -178,12 +178,12 @@ async function leaveMeeting(): Promise<void> {
             <div v-else-if="lookup" class="space-y-6">
                 <div>
                     <h1 class="text-xl font-semibold">{{ lookup.title }}</h1>
-                    <p class="text-sm text-neutral-400 mt-1">
+                    <p class="text-sm text-slate-400 mt-1">
                         {{ isHost ? "You're the host" : `Hosted by ${lookup.host_name}` }}
                     </p>
                 </div>
 
-                <p v-if="isEndedOrCancelled" class="text-sm text-neutral-400">
+                <p v-if="isEndedOrCancelled" class="text-sm text-slate-400">
                     This meeting has {{ lookup.status }}.
                 </p>
 
@@ -195,24 +195,24 @@ async function leaveMeeting(): Promise<void> {
 
                     <form v-if="!guestsBlocked" class="space-y-4" @submit.prevent="submitJoin">
                         <div v-if="needsGuestName">
-                            <label for="guest_name" class="block text-sm text-neutral-300 mb-1">Your name</label>
+                            <label for="guest_name" class="block text-sm text-slate-300 mb-1">Your name</label>
                             <input
                                 id="guest_name"
                                 v-model="guestName"
                                 type="text"
                                 required
-                                class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                                class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                             />
                             <p v-if="errors.guest_name" class="text-sm text-red-400 mt-1">{{ errors.guest_name[0] }}</p>
                         </div>
 
                         <div v-if="lookup.has_password && !isHost">
-                            <label for="password" class="block text-sm text-neutral-300 mb-1">Meeting password</label>
+                            <label for="password" class="block text-sm text-slate-300 mb-1">Meeting password</label>
                             <input
                                 id="password"
                                 v-model="password"
                                 type="password"
-                                class="w-full rounded-md bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:border-neutral-500"
+                                class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                             />
                             <p v-if="errors.password" class="text-sm text-red-400 mt-1">{{ errors.password[0] }}</p>
                         </div>
@@ -220,17 +220,17 @@ async function leaveMeeting(): Promise<void> {
                         <button
                             type="submit"
                             :disabled="joining"
-                            class="w-full rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium py-2 disabled:opacity-50"
+                            class="w-full rounded-md bg-indigo-600 text-white hover:bg-indigo-500 text-sm font-medium py-2 disabled:opacity-50"
                         >
                             {{ joining ? 'Joining…' : 'Join meeting' }}
                         </button>
                     </form>
 
                     <div v-else class="space-y-3">
-                        <p class="text-sm text-neutral-400">This meeting requires you to sign in to join.</p>
+                        <p class="text-sm text-slate-400">This meeting requires you to sign in to join.</p>
                         <router-link
                             :to="{ name: 'login', query: { redirect: route.fullPath } }"
-                            class="block w-full text-center rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium py-2"
+                            class="block w-full text-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 text-sm font-medium py-2"
                         >
                             Sign in
                         </router-link>
