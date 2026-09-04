@@ -92,45 +92,45 @@ function statusLabel(status: string): string {
 <template>
     <div class="max-w-3xl mx-auto px-6 py-12 space-y-6">
         <div>
-            <h1 class="text-xl font-semibold">Meeting history</h1>
-            <p class="text-slate-400 mt-1 text-sm">Past meetings and who attended</p>
+            <h1 class="text-xl font-semibold text-slate-900">Meeting history</h1>
+            <p class="text-slate-500 mt-1 text-sm">Past meetings and who attended</p>
         </div>
 
-        <p v-if="loadError" class="text-sm text-red-400">{{ loadError }}</p>
-        <p v-if="loading" class="text-sm text-slate-400">Loading…</p>
+        <p v-if="loadError" class="text-sm text-red-600">{{ loadError }}</p>
+        <p v-if="loading" class="text-sm text-slate-500">Loading…</p>
 
         <template v-else>
-            <p v-if="!history.length" class="text-sm text-slate-500">No past meetings yet.</p>
+            <p v-if="!history.length" class="text-sm text-slate-400">No past meetings yet.</p>
 
-            <div v-for="meeting in history" :key="meeting.id" class="border border-slate-800 rounded-md overflow-hidden">
+            <div v-for="meeting in history" :key="meeting.id" class="border border-slate-200 bg-white shadow-sm rounded-xl overflow-hidden">
                 <button
                     type="button"
-                    class="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-900"
+                    class="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-50 transition-colors"
                     @click="toggleExpanded(meeting)"
                 >
                     <div>
-                        <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-400 mt-1">
+                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
+                        <p class="text-xs text-slate-500 mt-1">
                             {{ capitalize(meeting.status) }} · {{ formatDate(meeting.ended_at ?? meeting.updated_at) }} · Duration: {{ meetingDuration(meeting) }}
                         </p>
                     </div>
-                    <span class="text-xs text-slate-500 shrink-0">{{ expandedId === meeting.id ? 'Hide' : 'Show' }} participants</span>
+                    <span class="text-xs text-slate-400 shrink-0">{{ expandedId === meeting.id ? 'Hide' : 'Show' }} participants</span>
                 </button>
 
-                <div v-if="expandedId === meeting.id" class="border-t border-slate-800 p-4 space-y-2">
-                    <p v-if="participantsLoading === meeting.id" class="text-sm text-slate-400">Loading participants…</p>
-                    <p v-else-if="participantsError" class="text-sm text-red-400">{{ participantsError }}</p>
-                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-slate-500">No one joined this meeting.</p>
+                <div v-if="expandedId === meeting.id" class="border-t border-slate-200 p-4 space-y-2">
+                    <p v-if="participantsLoading === meeting.id" class="text-sm text-slate-500">Loading participants…</p>
+                    <p v-else-if="participantsError" class="text-sm text-red-600">{{ participantsError }}</p>
+                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-slate-400">No one joined this meeting.</p>
                     <div
                         v-for="p in participants[meeting.id]"
                         :key="p.id"
-                        class="flex items-center justify-between text-sm py-1.5 border-b border-slate-900 last:border-b-0"
+                        class="flex items-center justify-between text-sm py-1.5 border-b border-slate-100 last:border-b-0"
                     >
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 text-slate-800">
                             <span>{{ p.name ?? 'Unknown' }}</span>
-                            <span class="text-xs text-slate-500">{{ roleLabel(p.role) }}</span>
+                            <span class="text-xs text-slate-400">{{ roleLabel(p.role) }}</span>
                         </div>
-                        <div class="text-xs text-slate-400 flex items-center gap-3">
+                        <div class="text-xs text-slate-500 flex items-center gap-3">
                             <span>{{ statusLabel(p.status) }}</span>
                             <span>{{ formatSeconds(p.duration_seconds) }}</span>
                         </div>

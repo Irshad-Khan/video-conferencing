@@ -13,13 +13,16 @@ async function onLogout(): Promise<void> {
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div
+        class="min-h-screen flex flex-col"
+        :class="route.meta.hideChrome ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'"
+    >
         <header
             v-if="!route.meta.hideChrome"
-            class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur px-6 py-3.5 flex items-center justify-between"
+            class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur px-6 py-3.5 flex items-center justify-between shadow-sm"
         >
-            <router-link to="/" class="flex items-center gap-2.5 text-base font-semibold tracking-tight">
-                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white text-sm font-bold shadow-sm shadow-indigo-950">
+            <router-link to="/" class="flex items-center gap-2.5 text-base font-semibold tracking-tight text-slate-900">
+                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white text-sm font-bold shadow-sm shadow-indigo-200">
                     V
                 </span>
                 Video Meeting App
@@ -28,36 +31,36 @@ async function onLogout(): Promise<void> {
             <nav v-if="state.user" class="flex items-center gap-1 text-sm">
                 <router-link
                     to="/dashboard"
-                    class="rounded-md px-3 py-1.5 text-slate-300 transition-colors hover:bg-slate-900 hover:text-slate-100"
-                    active-class="!text-white !bg-slate-800"
+                    class="rounded-md px-3 py-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                    active-class="!text-indigo-700 !bg-indigo-50"
                 >
                     Dashboard
                 </router-link>
                 <router-link
                     to="/history"
-                    class="rounded-md px-3 py-1.5 text-slate-300 transition-colors hover:bg-slate-900 hover:text-slate-100"
-                    active-class="!text-white !bg-slate-800"
+                    class="rounded-md px-3 py-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                    active-class="!text-indigo-700 !bg-indigo-50"
                 >
                     History
                 </router-link>
                 <router-link
                     to="/profile"
-                    class="rounded-md px-3 py-1.5 text-slate-300 transition-colors hover:bg-slate-900 hover:text-slate-100"
-                    active-class="!text-white !bg-slate-800"
+                    class="rounded-md px-3 py-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                    active-class="!text-indigo-700 !bg-indigo-50"
                 >
                     Profile
                 </router-link>
                 <router-link
                     v-if="state.user.is_admin"
                     to="/admin"
-                    class="rounded-md px-3 py-1.5 text-slate-300 transition-colors hover:bg-slate-900 hover:text-slate-100"
-                    active-class="!text-white !bg-slate-800"
+                    class="rounded-md px-3 py-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                    active-class="!text-indigo-700 !bg-indigo-50"
                 >
                     Admin
                 </router-link>
                 <button
                     type="button"
-                    class="ml-2 rounded-md border border-slate-800 px-3 py-1.5 text-slate-300 transition-colors hover:border-slate-700 hover:text-slate-100"
+                    class="ml-2 rounded-md border border-slate-300 px-3 py-1.5 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900"
                     @click="onLogout"
                 >
                     Log out

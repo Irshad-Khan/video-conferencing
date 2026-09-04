@@ -142,17 +142,17 @@ function capitalize(text: string): string {
 <template>
     <div class="max-w-4xl mx-auto px-6 py-12 space-y-6">
         <div>
-            <h1 class="text-xl font-semibold">Admin panel</h1>
-            <p class="text-slate-400 mt-1 text-sm">Users, meetings, and system stats</p>
+            <h1 class="text-xl font-semibold text-slate-900">Admin panel</h1>
+            <p class="text-slate-500 mt-1 text-sm">Users, meetings, and system stats</p>
         </div>
 
-        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+        <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
             <button
                 v-for="t in (['overview', 'users', 'meetings'] as const)"
                 :key="t"
                 type="button"
-                class="text-sm px-3 py-1.5 rounded-md capitalize"
-                :class="tab === t ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'text-slate-400 hover:text-slate-100'"
+                class="text-sm px-3 py-1.5 rounded-md capitalize transition-colors"
+                :class="tab === t ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'"
                 @click="tab = t"
             >
                 {{ t }}
@@ -160,56 +160,56 @@ function capitalize(text: string): string {
         </div>
 
         <section v-if="tab === 'overview'" class="space-y-4">
-            <p v-if="statsError" class="text-sm text-red-400">{{ statsError }}</p>
+            <p v-if="statsError" class="text-sm text-red-600">{{ statsError }}</p>
             <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Users</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.users.total }}</p>
-                    <p class="text-xs text-slate-500 mt-1">{{ stats.users.admins }} admin(s) · {{ stats.users.disabled }} disabled</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Users</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.users.total }}</p>
+                    <p class="text-xs text-slate-400 mt-1">{{ stats.users.admins }} admin(s) · {{ stats.users.disabled }} disabled</p>
                 </div>
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Meetings</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.meetings.total }}</p>
-                    <p class="text-xs text-slate-500 mt-1">{{ stats.meetings.live }} live now</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Meetings</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.meetings.total }}</p>
+                    <p class="text-xs text-slate-400 mt-1">{{ stats.meetings.live }} live now</p>
                 </div>
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Total participants</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.participants_total }}</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Total participants</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.participants_total }}</p>
                 </div>
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Scheduled</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.meetings.scheduled }}</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Scheduled</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.meetings.scheduled }}</p>
                 </div>
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Ended</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.meetings.ended }}</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Ended</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.meetings.ended }}</p>
                 </div>
-                <div class="border border-slate-800 rounded-md p-4">
-                    <p class="text-xs text-slate-400 uppercase tracking-wide">Cancelled</p>
-                    <p class="text-2xl font-semibold mt-1">{{ stats.meetings.cancelled }}</p>
+                <div class="border border-slate-200 bg-white shadow-sm rounded-xl p-4">
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Cancelled</p>
+                    <p class="text-2xl font-semibold mt-1 text-slate-900">{{ stats.meetings.cancelled }}</p>
                 </div>
             </div>
         </section>
 
         <section v-else-if="tab === 'users'" class="space-y-3">
-            <p v-if="usersError" class="text-sm text-red-400">{{ usersError }}</p>
+            <p v-if="usersError" class="text-sm text-red-600">{{ usersError }}</p>
             <div
                 v-for="user in users"
                 :key="user.id"
-                class="border border-slate-800 rounded-md p-4 flex items-center justify-between gap-4"
+                class="border border-slate-200 bg-white shadow-sm rounded-xl p-4 flex items-center justify-between gap-4"
             >
                 <div>
-                    <p class="font-medium flex items-center gap-2">
+                    <p class="font-medium flex items-center gap-2 text-slate-900">
                         {{ user.name }}
-                        <span v-if="user.is_admin" class="text-xs text-slate-400">Admin</span>
-                        <span v-if="user.is_disabled" class="text-xs text-red-400">Disabled</span>
+                        <span v-if="user.is_admin" class="text-xs text-slate-500">Admin</span>
+                        <span v-if="user.is_disabled" class="text-xs text-red-600">Disabled</span>
                     </p>
-                    <p class="text-xs text-slate-400 mt-1">{{ user.email }} · {{ user.meetings_count }} meeting(s)</p>
+                    <p class="text-xs text-slate-500 mt-1">{{ user.email }} · {{ user.meetings_count }} meeting(s)</p>
                 </div>
                 <button
                     type="button"
                     :disabled="userActionId === user.id"
-                    class="text-sm rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800 disabled:opacity-50 shrink-0"
+                    class="text-sm rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 shrink-0"
                     @click="toggleUserDisabled(user)"
                 >
                     {{ user.is_disabled ? 'Enable' : 'Disable' }}
@@ -218,51 +218,51 @@ function capitalize(text: string): string {
         </section>
 
         <section v-else class="space-y-3">
-            <p v-if="meetingsError" class="text-sm text-red-400">{{ meetingsError }}</p>
+            <p v-if="meetingsError" class="text-sm text-red-600">{{ meetingsError }}</p>
             <div class="flex items-center gap-2">
                 <button
                     v-for="f in (['all', 'active', 'history'] as const)"
                     :key="f"
                     type="button"
-                    class="text-xs px-3 py-1 rounded-full capitalize"
-                    :class="meetingFilter === f ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'border border-slate-800 text-slate-400 hover:text-slate-100'"
+                    class="text-xs px-3 py-1 rounded-full capitalize transition-colors"
+                    :class="meetingFilter === f ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'border border-slate-300 text-slate-500 hover:text-slate-900 hover:bg-slate-100'"
                     @click="meetingFilter = f"
                 >
                     {{ f }}
                 </button>
             </div>
 
-            <p v-if="meetingsLoading" class="text-sm text-slate-400">Loading…</p>
-            <p v-else-if="!filteredMeetings.length" class="text-sm text-slate-500">No meetings in this filter.</p>
+            <p v-if="meetingsLoading" class="text-sm text-slate-500">Loading…</p>
+            <p v-else-if="!filteredMeetings.length" class="text-sm text-slate-400">No meetings in this filter.</p>
 
-            <div v-for="meeting in filteredMeetings" :key="meeting.id" class="border border-slate-800 rounded-md overflow-hidden">
+            <div v-for="meeting in filteredMeetings" :key="meeting.id" class="border border-slate-200 bg-white shadow-sm rounded-xl overflow-hidden">
                 <div class="p-4 flex items-center justify-between gap-4">
                     <button type="button" class="text-left flex-1" @click="toggleExpanded(meeting)">
-                        <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-400 mt-1">
+                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
+                        <p class="text-xs text-slate-500 mt-1">
                             {{ capitalize(meeting.status) }} · Host: {{ meeting.host.name }} · {{ formatDate(meeting.scheduled_at) }}
                         </p>
                     </button>
                     <button
                         type="button"
                         :disabled="meetingActionId === meeting.id"
-                        class="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 shrink-0"
+                        class="text-sm text-red-600 hover:text-red-700 disabled:opacity-50 shrink-0"
                         @click="deleteMeeting(meeting)"
                     >
                         Delete
                     </button>
                 </div>
 
-                <div v-if="expandedMeetingId === meeting.id" class="border-t border-slate-800 p-4 space-y-2">
-                    <p v-if="participantsLoading === meeting.id" class="text-sm text-slate-400">Loading participants…</p>
-                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-slate-500">No one joined this meeting.</p>
+                <div v-if="expandedMeetingId === meeting.id" class="border-t border-slate-200 p-4 space-y-2">
+                    <p v-if="participantsLoading === meeting.id" class="text-sm text-slate-500">Loading participants…</p>
+                    <p v-else-if="!participants[meeting.id]?.length" class="text-sm text-slate-400">No one joined this meeting.</p>
                     <div
                         v-for="p in participants[meeting.id]"
                         :key="p.id"
-                        class="flex items-center justify-between text-sm py-1.5 border-b border-slate-900 last:border-b-0"
+                        class="flex items-center justify-between text-sm py-1.5 border-b border-slate-100 last:border-b-0 text-slate-800"
                     >
                         <span>{{ p.name ?? 'Unknown' }}</span>
-                        <div class="text-xs text-slate-400 flex items-center gap-3">
+                        <div class="text-xs text-slate-500 flex items-center gap-3">
                             <span class="capitalize">{{ p.status }}</span>
                             <span>{{ formatSeconds(p.duration_seconds) }}</span>
                         </div>

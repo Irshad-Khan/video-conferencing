@@ -220,11 +220,11 @@ function formatDate(iso: string | null): string {
 
 <template>
     <div class="max-w-5xl mx-auto px-6 py-10 space-y-8">
-        <div class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/40 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
             <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-indigo-400">Dashboard</p>
-                <h1 class="text-2xl font-semibold mt-1">Welcome back, {{ state.user?.name }}</h1>
-                <p class="text-slate-400 mt-1 text-sm">Here's what's happening with your meetings.</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-indigo-600">Dashboard</p>
+                <h1 class="text-2xl font-semibold mt-1 text-slate-900">Welcome back, {{ state.user?.name }}</h1>
+                <p class="text-slate-500 mt-1 text-sm">Here's what's happening with your meetings.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <form class="flex items-center gap-2" @submit.prevent="goToJoin">
@@ -232,18 +232,18 @@ function formatDate(iso: string | null): string {
                         v-model="joinCode"
                         type="text"
                         placeholder="Enter a meeting code"
-                        class="rounded-md bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                        class="rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     />
                     <button
                         type="submit"
-                        class="rounded-md border border-slate-700 bg-slate-950/40 text-sm font-medium px-4 py-2 hover:bg-slate-800 transition-colors"
+                        class="rounded-md border border-slate-300 bg-white text-sm font-medium px-4 py-2 text-slate-700 hover:bg-slate-100 transition-colors"
                     >
                         Join
                     </button>
                 </form>
                 <button
                     type="button"
-                    class="rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium px-4 py-2 shadow-sm shadow-indigo-950"
+                    class="rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium px-4 py-2 shadow-sm shadow-indigo-200"
                     @click="openCreateForm"
                 >
                     + New meeting
@@ -251,55 +251,55 @@ function formatDate(iso: string | null): string {
             </div>
         </div>
 
-        <p v-if="loadError" class="text-sm text-red-400">{{ loadError }}</p>
-        <p v-if="actionError" class="text-sm text-red-400">{{ actionError }}</p>
+        <p v-if="loadError" class="text-sm text-red-600">{{ loadError }}</p>
+        <p v-if="actionError" class="text-sm text-red-600">{{ actionError }}</p>
 
-        <div v-if="showForm" class="border border-slate-800 bg-slate-900/40 rounded-xl p-5 space-y-4">
-            <h2 class="text-sm font-medium text-slate-200">
+        <div v-if="showForm" class="border border-slate-200 bg-white shadow-sm rounded-xl p-5 space-y-4">
+            <h2 class="text-sm font-medium text-slate-800">
                 {{ editingMeeting ? 'Edit meeting' : 'Schedule a new meeting' }}
             </h2>
 
             <form class="space-y-4" @submit.prevent="submitForm">
                 <div>
-                    <label for="title" class="block text-sm text-slate-300 mb-1">Title</label>
+                    <label for="title" class="block text-sm text-slate-600 mb-1">Title</label>
                     <input
                         id="title"
                         v-model="title"
                         type="text"
                         required
-                        class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                        class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     />
-                    <p v-if="formErrors.title" class="text-sm text-red-400 mt-1">{{ formErrors.title[0] }}</p>
+                    <p v-if="formErrors.title" class="text-sm text-red-600 mt-1">{{ formErrors.title[0] }}</p>
                 </div>
 
                 <div>
-                    <label for="description" class="block text-sm text-slate-300 mb-1">Description</label>
+                    <label for="description" class="block text-sm text-slate-600 mb-1">Description</label>
                     <textarea
                         id="description"
                         v-model="description"
                         rows="2"
-                        class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                        class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                     ></textarea>
                 </div>
 
                 <div class="grid grid-cols-3 gap-4">
                     <div>
-                        <label for="scheduled_at" class="block text-sm text-slate-300 mb-1">
+                        <label for="scheduled_at" class="block text-sm text-slate-600 mb-1">
                             Scheduled for (leave blank for instant)
                         </label>
                         <input
                             id="scheduled_at"
                             v-model="scheduledAt"
                             type="datetime-local"
-                            class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                            class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                         />
-                        <p v-if="formErrors.scheduled_at" class="text-sm text-red-400 mt-1">
+                        <p v-if="formErrors.scheduled_at" class="text-sm text-red-600 mt-1">
                             {{ formErrors.scheduled_at[0] }}
                         </p>
                     </div>
 
                     <div>
-                        <label for="duration_minutes" class="block text-sm text-slate-300 mb-1">
+                        <label for="duration_minutes" class="block text-sm text-slate-600 mb-1">
                             Duration (minutes, optional)
                         </label>
                         <input
@@ -309,28 +309,28 @@ function formatDate(iso: string | null): string {
                             min="1"
                             max="1440"
                             placeholder="60"
-                            class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                            class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                         />
-                        <p v-if="formErrors.duration_minutes" class="text-sm text-red-400 mt-1">
+                        <p v-if="formErrors.duration_minutes" class="text-sm text-red-600 mt-1">
                             {{ formErrors.duration_minutes[0] }}
                         </p>
                     </div>
 
                     <div>
-                        <label for="password" class="block text-sm text-slate-300 mb-1">
+                        <label for="password" class="block text-sm text-slate-600 mb-1">
                             {{ editingMeeting?.has_password ? 'New password (leave blank to keep)' : 'Password (optional)' }}
                         </label>
                         <input
                             id="password"
                             v-model="password"
                             type="password"
-                            class="w-full rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                            class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                         />
-                        <p v-if="formErrors.password" class="text-sm text-red-400 mt-1">{{ formErrors.password[0] }}</p>
+                        <p v-if="formErrors.password" class="text-sm text-red-600 mt-1">{{ formErrors.password[0] }}</p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-6 text-sm text-slate-300">
+                <div class="flex items-center gap-6 text-sm text-slate-600">
                     <label class="flex items-center gap-2">
                         <input v-model="waitingRoomEnabled" type="checkbox" />
                         Waiting room
@@ -349,29 +349,29 @@ function formatDate(iso: string | null): string {
                     >
                         {{ submitting ? 'Saving…' : editingMeeting ? 'Save changes' : 'Create meeting' }}
                     </button>
-                    <button type="button" class="text-sm text-slate-400 hover:text-slate-200" @click="closeForm">
+                    <button type="button" class="text-sm text-slate-500 hover:text-slate-800" @click="closeForm">
                         Cancel
                     </button>
                 </div>
             </form>
         </div>
 
-        <p v-if="loading" class="text-sm text-slate-400">Loading…</p>
+        <p v-if="loading" class="text-sm text-slate-500">Loading…</p>
 
         <template v-else>
             <section v-if="live.length" class="space-y-3">
-                <h2 class="flex items-center gap-2 text-sm font-medium text-slate-400 uppercase tracking-wide">
+                <h2 class="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wide">
                     <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                     Live now
                 </h2>
                 <div
                     v-for="meeting in live"
                     :key="meeting.id"
-                    class="border border-emerald-900 bg-emerald-950/30 rounded-xl p-4 flex items-center justify-between"
+                    class="border border-emerald-200 bg-emerald-50 rounded-xl p-4 flex items-center justify-between"
                 >
                     <div>
-                        <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-400 mt-1">Code: {{ meeting.meeting_code }}</p>
+                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
+                        <p class="text-xs text-slate-500 mt-1">Code: {{ meeting.meeting_code }}</p>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button
@@ -384,7 +384,7 @@ function formatDate(iso: string | null): string {
                         <button
                             type="button"
                             :disabled="actionMeetingId === meeting.id"
-                            class="text-sm rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800 transition-colors disabled:opacity-50"
+                            class="text-sm rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
                             @click="runAction(meeting, 'end')"
                         >
                             End meeting
@@ -398,16 +398,16 @@ function formatDate(iso: string | null): string {
                 { label: 'Tomorrow', items: tomorrow, empty: 'No meetings scheduled for tomorrow.' },
                 { label: 'Upcoming', items: upcoming, empty: 'No later meetings scheduled.' },
             ]" :key="group.label" class="space-y-3">
-                <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wide">{{ group.label }}</h2>
-                <p v-if="!group.items.length" class="text-sm text-slate-500">{{ group.empty }}</p>
+                <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">{{ group.label }}</h2>
+                <p v-if="!group.items.length" class="text-sm text-slate-400">{{ group.empty }}</p>
                 <div
                     v-for="meeting in group.items"
                     :key="meeting.id"
-                    class="border border-slate-800 bg-slate-900/30 rounded-xl p-4 flex items-center justify-between gap-4 hover:bg-slate-900/60 transition-colors"
+                    class="border border-slate-200 bg-white rounded-xl p-4 flex items-center justify-between gap-4 hover:shadow-sm transition-shadow"
                 >
                     <div>
-                        <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-400 mt-1">
+                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
+                        <p class="text-xs text-slate-500 mt-1">
                             {{ formatDate(meeting.scheduled_at) }}
                             <template v-if="formatDuration(meeting.duration_minutes)"> · {{ formatDuration(meeting.duration_minutes) }}</template>
                             · Code: {{ meeting.meeting_code }}
@@ -424,7 +424,7 @@ function formatDate(iso: string | null): string {
                         </button>
                         <button
                             type="button"
-                            class="text-sm text-slate-400 hover:text-slate-200"
+                            class="text-sm text-slate-500 hover:text-slate-800"
                             @click="openEditForm(meeting)"
                         >
                             Edit
@@ -432,7 +432,7 @@ function formatDate(iso: string | null): string {
                         <button
                             type="button"
                             :disabled="actionMeetingId === meeting.id"
-                            class="text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                            class="text-sm text-slate-500 hover:text-slate-800 disabled:opacity-50"
                             @click="runAction(meeting, 'cancel')"
                         >
                             Cancel
@@ -440,7 +440,7 @@ function formatDate(iso: string | null): string {
                         <button
                             type="button"
                             :disabled="actionMeetingId === meeting.id"
-                            class="text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
+                            class="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
                             @click="deleteMeeting(meeting)"
                         >
                             Delete
@@ -450,23 +450,23 @@ function formatDate(iso: string | null): string {
             </section>
 
             <section class="space-y-3">
-                <h2 class="text-sm font-medium text-slate-400 uppercase tracking-wide">Past</h2>
-                <p v-if="!past.length" class="text-sm text-slate-500">No past meetings yet.</p>
+                <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">Past</h2>
+                <p v-if="!past.length" class="text-sm text-slate-400">No past meetings yet.</p>
                 <div
                     v-for="meeting in past"
                     :key="meeting.id"
-                    class="border border-slate-800 bg-slate-900/20 rounded-xl p-4 flex items-center justify-between gap-4 opacity-75"
+                    class="border border-slate-200 bg-slate-50 rounded-xl p-4 flex items-center justify-between gap-4 opacity-75"
                 >
                     <div>
-                        <p class="font-medium">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-400 mt-1 capitalize">
+                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
+                        <p class="text-xs text-slate-500 mt-1 capitalize">
                             {{ meeting.status }} · {{ formatDate(meeting.ended_at ?? meeting.updated_at) }}
                         </p>
                     </div>
                     <button
                         type="button"
                         :disabled="actionMeetingId === meeting.id"
-                        class="text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
+                        class="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
                         @click="deleteMeeting(meeting)"
                     >
                         Delete
