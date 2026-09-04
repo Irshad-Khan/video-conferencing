@@ -99,7 +99,9 @@ export type HostControlAction =
     | 'waiting-room-enabled'
     | 'waiting-room-disabled'
     | 'spotlight'
-    | 'spotlight-cleared';
+    | 'spotlight-cleared'
+    | 'co-host-promoted'
+    | 'co-host-demoted';
 
 export interface HostControlPayload {
     action: HostControlAction;

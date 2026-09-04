@@ -224,6 +224,12 @@ const activePeerTile = computed(() => {
     return peers[peerIds[0]];
 });
 
+// manageSettings/manageParticipants-level abilities (lock/guests/waiting-room toggle,
+// mute/remove/spotlight/admit/reject) extend to a promoted co-host, matching the
+// server-side MeetingPolicy — but NOT manageLifecycle (end meeting) or manageCoHosts
+// (promote/demote), which stay strictly isHost-gated below, on purpose.
+const canManage = computed(() => isHost.value || myRole.value === 'co_host');
+
 function attachSignalingListeners(): void {
     if (!channel) return;
 
@@ -297,7 +303,7 @@ function attachSignalingListeners(): void {
             }
         })
         .listen('.waiting-room', (payload: WaitingRoomPayload) => {
-            if (!isHost.value) return;
+            if (!canManage.value) return;
             if (payload.action === 'participant-waiting' && payload.participant) {
                 waitingParticipants.value.push(payload.participant);
             } else if (payload.action === 'participant-left-waiting' && payload.id !== undefined) {
@@ -357,6 +363,30 @@ function handleHostControl(payload: HostControlPayload): void {
             break;
         case 'spotlight-cleared':
             spotlightedId.value = '';
+            break;
+        case 'co-host-promoted':
+            if (payload.target === myId) {
+                myRole.value = 'co_host';
+                // Also update the join snapshot itself, not just the reactive ref —
+                // createOfferTo() reads joinData.participant.role fresh for every new
+                // peer's offer, so without this, anyone connecting to us *after* this
+                // promotion would still see us announced as a plain 'participant'.
+                if (joinData) joinData.participant.role = 'co_host';
+                notice.value = 'The host made you a co-host.';
+            }
+            if (payload.target && peers[payload.target]) {
+                peers[payload.target].role = 'co_host';
+            }
+            break;
+        case 'co-host-demoted':
+            if (payload.target === myId) {
+                myRole.value = 'participant';
+                if (joinData) joinData.participant.role = 'participant';
+                notice.value = 'The host removed your co-host access.';
+            }
+            if (payload.target && peers[payload.target]) {
+                peers[payload.target].role = 'participant';
+            }
             break;
     }
 }
@@ -658,7 +688,7 @@ async function toggleWaitingRoom(): Promise<void> {
 }
 
 async function loadWaitingParticipants(): Promise<void> {
-    if (!joinData || !isHost.value) return;
+    if (!joinData || !canManage.value) return;
 
     try {
         const { data } = await api.get<{ data: WaitingParticipant[] }>(`/meetings/${joinData.meeting.meeting_uuid}/participants/waiting`);
@@ -734,6 +764,34 @@ async function muteParticipant(peer: PeerTile): Promise<void> {
     }
 }
 
+async function promoteToCoHost(peer: PeerTile): Promise<void> {
+    if (!joinData || !peer.participantId || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${peer.participantId}/promote`);
+    } catch {
+        hostActionError.value = `Could not make ${peer.name} a co-host. Please try again.`;
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function demoteFromCoHost(peer: PeerTile): Promise<void> {
+    if (!joinData || !peer.participantId || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${peer.participantId}/demote`);
+    } catch {
+        hostActionError.value = `Could not remove ${peer.name}'s co-host access. Please try again.`;
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
 async function spotlightParticipant(peer: PeerTile): Promise<void> {
     if (!joinData || !peer.participantId || hostActionBusy.value) return;
     hostActionBusy.value = true;
@@ -801,7 +859,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
             <p v-if="hostActionError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ hostActionError }}</p>
             <p v-if="screenShareError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ screenShareError }}</p>
 
-            <div v-if="isHost" class="flex items-center justify-center gap-2 px-4 py-2 border-b border-neutral-800 text-xs">
+            <div v-if="canManage" class="flex items-center justify-center gap-2 px-4 py-2 border-b border-neutral-800 text-xs">
                 <button
                     type="button"
                     :disabled="hostActionBusy"
@@ -830,6 +888,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     {{ waitingRoomEnabled ? 'Disable waiting room' : 'Enable waiting room' }}
                 </button>
                 <button
+                    v-if="isHost"
                     type="button"
                     :disabled="hostActionBusy"
                     class="rounded-full px-3 py-1 bg-red-700 disabled:opacity-50"
@@ -885,7 +944,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             <span v-else-if="pinnedId === peer.id">· pinned</span>
                             <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
                         </div>
-                        <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
+                        <div v-if="canManage && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
                             <button
                                 type="button"
                                 :disabled="hostActionBusy"
@@ -1043,7 +1102,17 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 >
                                     {{ pinnedId === peer.id ? 'Unpin' : 'Pin' }}
                                 </button>
-                                <template v-if="isHost && peer.participantId">
+                                <button
+                                    v-if="isHost && peer.participantId && peer.role !== 'guest'"
+                                    type="button"
+                                    :disabled="hostActionBusy"
+                                    class="text-xs rounded px-2 py-1 disabled:opacity-50"
+                                    :class="peer.role === 'co_host' ? 'bg-purple-900/60 hover:bg-purple-900/80' : 'bg-neutral-900 hover:bg-neutral-800'"
+                                    @click="peer.role === 'co_host' ? demoteFromCoHost(peer) : promoteToCoHost(peer)"
+                                >
+                                    {{ peer.role === 'co_host' ? 'Remove co-host' : 'Make co-host' }}
+                                </button>
+                                <template v-if="canManage && peer.participantId">
                                     <button
                                         type="button"
                                         :disabled="hostActionBusy"
@@ -1075,7 +1144,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </div>
                 </aside>
 
-                <aside v-if="isHost && waitingRoomOpen" class="w-80 shrink-0 border-l border-neutral-800 flex flex-col">
+                <aside v-if="canManage && waitingRoomOpen" class="w-80 shrink-0 border-l border-neutral-800 flex flex-col">
                     <div class="px-3 py-2 border-b border-neutral-800 text-sm font-medium flex items-center justify-between">
                         Waiting Room ({{ waitingParticipants.length }})
                         <button type="button" class="text-neutral-400 hover:text-neutral-200 text-xs" @click="toggleWaitingRoomPanel">Close</button>
@@ -1147,7 +1216,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     Participants ({{ Object.keys(peers).length + 1 }})
                 </button>
                 <button
-                    v-if="isHost"
+                    v-if="canManage"
                     type="button"
                     class="relative rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
                     :class="waitingRoomOpen ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"

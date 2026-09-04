@@ -44,11 +44,25 @@ class MeetingPolicyTest extends TestCase
         $this->assertTrue($this->policy->update($host, $meeting));
         $this->assertTrue($this->policy->delete($host, $meeting));
         $this->assertTrue($this->policy->manageLifecycle($host, $meeting));
+        $this->assertTrue($this->policy->manageCoHosts($host, $meeting));
+        // manageSettings/manageParticipants short-circuit true for the host before
+        // ever touching the co-host DB lookup, so these two stay framework-free-safe.
         $this->assertTrue($this->policy->manageSettings($host, $meeting));
         $this->assertTrue($this->policy->manageParticipants($host, $meeting));
     }
 
-    public function test_a_non_host_fails_every_ability(): void
+    /**
+     * Deliberately excludes manageSettings/manageParticipants: for a *non*-host, both
+     * now fall through to a real "is this user a co-host of this meeting?" database
+     * query (see isHostOrCoHost() in MeetingPolicy, added for Phase 22's co-host
+     * feature) — that branch can't run in this framework-free test (no DB connection
+     * resolver is bootstrapped here at all). It's covered instead by Feature tests
+     * that exercise the real HTTP+DB path: MeetingControlsAuthorizationTest's
+     * "a non host participant cannot call any host control endpoint" (stranger fails)
+     * and MeetingControlsTest's "a co host can mute and remove participants..."
+     * (co-host succeeds).
+     */
+    public function test_a_non_host_fails_every_db_free_ability(): void
     {
         $stranger = $this->userWithId(2);
         $meeting = $this->meetingHostedBy(1);
@@ -57,8 +71,7 @@ class MeetingPolicyTest extends TestCase
         $this->assertFalse($this->policy->update($stranger, $meeting));
         $this->assertFalse($this->policy->delete($stranger, $meeting));
         $this->assertFalse($this->policy->manageLifecycle($stranger, $meeting));
-        $this->assertFalse($this->policy->manageSettings($stranger, $meeting));
-        $this->assertFalse($this->policy->manageParticipants($stranger, $meeting));
+        $this->assertFalse($this->policy->manageCoHosts($stranger, $meeting));
     }
 
     public function test_ability_checks_use_strict_identity_comparison(): void

@@ -92,6 +92,100 @@ class MeetingControlsTest extends TestCase
             ->assertStatus(409);
     }
 
+    public function test_the_host_can_promote_and_demote_a_co_host(): void
+    {
+        Event::fake([HostControlEvent::class]);
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $participant = MeetingParticipant::factory()->for($meeting)->create([
+            'status' => MeetingParticipant::STATUS_JOINED,
+            'role' => MeetingParticipant::ROLE_PARTICIPANT,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/promote")
+            ->assertStatus(200)
+            ->assertJsonPath('data.role', MeetingParticipant::ROLE_CO_HOST);
+
+        $this->assertSame(MeetingParticipant::ROLE_CO_HOST, $participant->fresh()->role);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/demote")
+            ->assertStatus(200)
+            ->assertJsonPath('data.role', MeetingParticipant::ROLE_PARTICIPANT);
+
+        $this->assertSame(MeetingParticipant::ROLE_PARTICIPANT, $participant->fresh()->role);
+
+        Event::assertDispatched(HostControlEvent::class, fn (HostControlEvent $e) => $e->action === 'co-host-promoted');
+        Event::assertDispatched(HostControlEvent::class, fn (HostControlEvent $e) => $e->action === 'co-host-demoted');
+    }
+
+    public function test_a_guest_cannot_be_promoted_to_co_host(): void
+    {
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $guest = MeetingParticipant::factory()->for($meeting)->create([
+            'user_id' => null,
+            'guest_name' => 'Guest Grace',
+            'role' => MeetingParticipant::ROLE_GUEST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$guest->id}/promote")
+            ->assertStatus(422);
+
+        $this->assertSame(MeetingParticipant::ROLE_GUEST, $guest->fresh()->role);
+    }
+
+    public function test_promoting_the_host_themselves_returns_409(): void
+    {
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $hostParticipant = MeetingParticipant::factory()->for($meeting)->for($host)->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$hostParticipant->id}/promote")
+            ->assertStatus(409);
+    }
+
+    public function test_a_co_host_can_mute_and_remove_participants_but_cannot_promote_or_end_the_meeting(): void
+    {
+        Event::fake([HostControlEvent::class]);
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $coHostUser = User::factory()->create();
+        MeetingParticipant::factory()->for($meeting)->for($coHostUser)->create([
+            'role' => MeetingParticipant::ROLE_CO_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+        $target = MeetingParticipant::factory()->for($meeting)->create([
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($coHostUser)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$target->id}/mute")
+            ->assertStatus(200);
+
+        $anotherTarget = MeetingParticipant::factory()->for($meeting)->create([
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+        $this->actingAs($coHostUser)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$anotherTarget->id}/promote")
+            ->assertStatus(403);
+
+        $this->actingAs($coHostUser)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/end")
+            ->assertStatus(403);
+
+        $this->assertSame(Meeting::STATUS_LIVE, $meeting->fresh()->status);
+    }
+
     public function test_the_host_can_spotlight_a_participant(): void
     {
         Event::fake([HostControlEvent::class]);

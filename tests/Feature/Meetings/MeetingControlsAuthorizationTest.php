@@ -22,6 +22,8 @@ class MeetingControlsAuthorizationTest extends TestCase
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/unlock")->assertStatus(401);
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/guests/enable")->assertStatus(401);
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/guests/disable")->assertStatus(401);
+        $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/promote")->assertStatus(401);
+        $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/demote")->assertStatus(401);
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/mute")->assertStatus(401);
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/spotlight")->assertStatus(401);
         $this->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/spotlight/clear")->assertStatus(401);
@@ -41,6 +43,12 @@ class MeetingControlsAuthorizationTest extends TestCase
         $this->actingAs($stranger)->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/unlock")->assertStatus(403);
         $this->actingAs($stranger)->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/guests/enable")->assertStatus(403);
         $this->actingAs($stranger)->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/guests/disable")->assertStatus(403);
+        $this->actingAs($stranger)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/promote")
+            ->assertStatus(403);
+        $this->actingAs($stranger)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/demote")
+            ->assertStatus(403);
         $this->actingAs($stranger)
             ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/mute")
             ->assertStatus(403);
@@ -73,6 +81,10 @@ class MeetingControlsAuthorizationTest extends TestCase
 
         $this->actingAs($host)
             ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$foreignParticipant->id}/spotlight")
+            ->assertStatus(404);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$foreignParticipant->id}/promote")
             ->assertStatus(404);
 
         $this->actingAs($host)

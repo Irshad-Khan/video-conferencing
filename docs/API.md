@@ -98,7 +98,7 @@ Response: `200 {"data": {...meeting}}`, or `409` if not currently `scheduled`.
 
 ## Meeting Controls (Host)
 
-All endpoints below require `auth:sanctum` and are host-only (`MeetingPolicy::manageSettings`/`manageParticipants`; a non-host gets `403`). Meetings are addressed by `meeting_uuid`. Every mutating action broadcasts an `App\Events\HostControlEvent` on the meeting's Reverb channel as `.host.control` so connected clients react in real time — see [WEBRTC.md](WEBRTC.md#host-control-signaling).
+All endpoints below require `auth:sanctum`. Most are gated by `MeetingPolicy::manageSettings`/`manageParticipants`, which — since Phase 22 — accept the host **or** a promoted co-host (a non-host/non-co-host gets `403`); the promote/demote pair itself is the one exception, staying strictly host-only via `manageCoHosts`. Meetings are addressed by `meeting_uuid`. Every mutating action broadcasts an `App\Events\HostControlEvent` on the meeting's Reverb channel as `.host.control` so connected clients react in real time — see [WEBRTC.md](WEBRTC.md#host-control-signaling).
 
 ### `POST /api/v1/meetings/{meeting}/lock` / `POST /api/v1/meetings/{meeting}/unlock`
 
@@ -134,6 +134,12 @@ Response: `200 {"data": {...participant}}`, or `409` if the participant isn't cu
 
 Force-mutes a participant currently in the call (broadcasts `action: mute` with the participant's `presenceId()` as `target`; the target's own client disables its mic).
 Response: `200 {"data": {"muted": true}}`, or `409` if the participant isn't currently `joined`, or `404` if `{participant}` doesn't belong to `{meeting}`.
+
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/promote` / `POST /api/v1/meetings/{meeting}/participants/{participant}/demote`
+
+Grants or revokes co-host status. Unlike every other endpoint in this section, this specific pair is gated by `MeetingPolicy::manageCoHosts` — host-only, deliberately *not* extended to co-hosts themselves (a co-host cannot appoint another co-host, matching Zoom). Every other endpoint below (lock/guests/waiting-room toggle, mute/spotlight/remove) now accepts a co-host too, via `manageSettings`/`manageParticipants` — see [SECURITY.md](SECURITY.md#authorization).
+Promote response: `200 {"data": {...participant}}` with `role: "co_host"`, or `409` if the target is the host or not currently `joined`, `422` if the target is a guest (guests have no persistent session to exercise co-host actions with), or `404` if `{participant}` doesn't belong to `{meeting}`.
+Demote response: `200 {"data": {...participant}}` with `role: "participant"`, or `409` if the target isn't currently a co-host, or `404` if `{participant}` doesn't belong to `{meeting}`.
 
 ### `POST /api/v1/meetings/{meeting}/participants/{participant}/spotlight` / `POST /api/v1/meetings/{meeting}/spotlight/clear`
 

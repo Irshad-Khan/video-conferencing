@@ -146,6 +146,44 @@ class MeetingControlController extends Controller
         return response()->json(['data' => ['muted' => true]]);
     }
 
+    public function promoteToCoHost(Meeting $meeting, MeetingParticipant $participant): JsonResponse
+    {
+        Gate::authorize('manageCoHosts', $meeting);
+        abort_if($participant->meeting_id !== $meeting->id, 404);
+
+        if ($participant->role === MeetingParticipant::ROLE_HOST) {
+            return response()->json(['message' => 'The host is already in charge.'], 409);
+        }
+
+        if ($participant->user_id === null) {
+            return response()->json(['message' => 'A guest cannot be made a co-host.'], 422);
+        }
+
+        if ($participant->status !== MeetingParticipant::STATUS_JOINED) {
+            return response()->json(['message' => 'This participant is not currently in the call.'], 409);
+        }
+
+        $participant->forceFill(['role' => MeetingParticipant::ROLE_CO_HOST])->save();
+        broadcast(new HostControlEvent($meeting, 'co-host-promoted', ['target' => $participant->presenceId()]));
+
+        return response()->json(['data' => $participant]);
+    }
+
+    public function demoteFromCoHost(Meeting $meeting, MeetingParticipant $participant): JsonResponse
+    {
+        Gate::authorize('manageCoHosts', $meeting);
+        abort_if($participant->meeting_id !== $meeting->id, 404);
+
+        if ($participant->role !== MeetingParticipant::ROLE_CO_HOST) {
+            return response()->json(['message' => 'This participant is not currently a co-host.'], 409);
+        }
+
+        $participant->forceFill(['role' => MeetingParticipant::ROLE_PARTICIPANT])->save();
+        broadcast(new HostControlEvent($meeting, 'co-host-demoted', ['target' => $participant->presenceId()]));
+
+        return response()->json(['data' => $participant]);
+    }
+
     public function spotlightParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         Gate::authorize('manageParticipants', $meeting);
