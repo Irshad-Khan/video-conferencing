@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, WaitingParticipant, WaitingRoomPayload } from '../types';
+import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, ReactionPayload, WaitingParticipant, WaitingRoomPayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -58,6 +58,19 @@ const waitingRoomEnabled = ref(false);
 const waitingRoomOpen = ref(false);
 const waitingParticipants = ref<WaitingParticipant[]>([]);
 const waitingActionBusy = ref(false);
+const reactionPickerOpen = ref(false);
+
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉'];
+
+interface FloatingReaction {
+    id: number;
+    emoji: string;
+    name: string;
+    left: number;
+}
+
+const floatingReactions = ref<FloatingReaction[]>([]);
+let reactionSeq = 0;
 
 let joinData: JoinMeetingResponse | null = null;
 let localStream: MediaStream | null = null;
@@ -189,6 +202,9 @@ function attachSignalingListeners(): void {
                 peers[payload.from].screenSharing = payload.screenSharing ?? false;
             }
         })
+        .listenForWhisper('reaction', (payload: ReactionPayload) => {
+            spawnReaction(payload.emoji, peers[payload.from]?.name ?? 'Someone');
+        })
         .listen('.host.control', (payload: HostControlPayload) => {
             handleHostControl(payload);
         })
@@ -255,6 +271,23 @@ function handleHostControl(payload: HostControlPayload): void {
             waitingRoomEnabled.value = false;
             break;
     }
+}
+
+function spawnReaction(emoji: string, name: string): void {
+    const id = ++reactionSeq;
+    const left = 10 + Math.random() * 80;
+    floatingReactions.value.push({ id, emoji, name, left });
+    setTimeout(() => {
+        floatingReactions.value = floatingReactions.value.filter((r) => r.id !== id);
+    }, 2500);
+}
+
+function sendReaction(emoji: string): void {
+    // Whispers aren't echoed back to the sender by Reverb/Pusher's protocol, so the
+    // sender spawns their own copy locally rather than waiting for a round-trip.
+    channel?.whisper('reaction', { from: myId, emoji });
+    spawnReaction(emoji, 'You');
+    reactionPickerOpen.value = false;
 }
 
 function teardown(): void {
@@ -671,7 +704,18 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 </button>
             </div>
 
-            <div class="flex-1 flex min-h-0">
+            <div class="flex-1 flex min-h-0 relative">
+                <div class="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none overflow-hidden z-20">
+                    <div
+                        v-for="r in floatingReactions"
+                        :key="r.id"
+                        class="absolute bottom-0 flex flex-col items-center reaction-float"
+                        :style="{ left: r.left + '%' }"
+                    >
+                        <span class="text-3xl leading-none">{{ r.emoji }}</span>
+                        <span class="text-[10px] text-neutral-300 bg-neutral-950/70 rounded px-1 mt-1">{{ r.name }}</span>
+                    </div>
+                </div>
                 <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
                     <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
                         <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
@@ -893,6 +937,30 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         {{ waitingParticipants.length }}
                     </span>
                 </button>
+                <div class="relative">
+                    <div
+                        v-if="reactionPickerOpen"
+                        class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-full px-2 py-1.5"
+                    >
+                        <button
+                            v-for="emoji in REACTION_EMOJIS"
+                            :key="emoji"
+                            type="button"
+                            class="text-xl hover:scale-125 transition-transform px-1"
+                            @click="sendReaction(emoji)"
+                        >
+                            {{ emoji }}
+                        </button>
+                    </div>
+                    <button
+                        type="button"
+                        class="rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
+                        :class="reactionPickerOpen ? 'bg-blue-900/50 border-blue-800' : 'bg-neutral-900'"
+                        @click="reactionPickerOpen = !reactionPickerOpen"
+                    >
+                        React
+                    </button>
+                </div>
                 <button
                     type="button"
                     class="relative rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"

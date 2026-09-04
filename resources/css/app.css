@@ -7,3 +7,21 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+@keyframes reaction-float {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+    15% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-16rem);
+        opacity: 0;
+    }
+}
+
+.reaction-float {
+    animation: reaction-float 2.5s ease-out forwards;
+}

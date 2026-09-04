@@ -363,3 +363,17 @@ Verified 2026-09-03, mcsirshad95@gmail.com. Like Phase 16, this is a consolidati
 | TC-P17-04 | Manual WebRTC procedures are already complete | Every phase from 5 through 15 that touched the browser has its own Verification Checklist in this file already | PASS (no new work — this bullet was already satisfied continuously, phase by phase; confirmed by re-reading every existing checklist section in this file during this pass) |
 
 A genuine methodology catch during this pass, not logged as an app bug since no application code was ever wrong — a *test-writing* mistake caught before it shipped: an early draft of the `MeetingPolicy` unit test constructed fixtures with `new User(['id' => 1])`, assuming constructor mass-assignment would set `id`. It silently didn't — `id` isn't in `User`'s `#[Fillable(...)]` list — so both the "host" and "meeting" fixtures ended up with `null` ids, and the policy check (`null === null`) passed for *any* pairing, including ones that shouldn't have matched. Caught by writing a probe test that intentionally used a mismatched id and asserting `assertFalse` — it came back `true`. Fixed by using `forceFill()` for test fixtures throughout (the same pattern the app itself uses for non-fillable internal fields), and left as a code comment in `MeetingPolicyTest.php` so the next person writing a similar fixture doesn't repeat it.
+
+## Phase 18 Verification Checklist (Reactions)
+
+Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend routes or Feature tests, since reactions are a purely client-side whisper (see [WEBRTC.md](WEBRTC.md#reactions-signaling)); verification is entirely live, the same as screen sharing (Phase 8).
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P18-00 | Backend/build unaffected | `php artisan test` (149/149) and `npm run build` both pass — this feature touches no backend code | PASS |
+| TC-P18-01 | Sender sees their own reaction | Clicking an emoji in the "React" picker spawns the floating animation locally immediately (whispers aren't echoed back to their own sender, so this has to be a local spawn, not a round-trip) | PASS |
+| TC-P18-02 | Remote participant sees it, with the sender's name | A reaction sent by one participant appears on another's screen, tagged with the sender's actual name — verified in both directions (host→guest and guest→host) with two independent Chrome profiles | PASS |
+| TC-P18-03 | Auto-fade | The floating reaction removes itself from the DOM after its ~2.5s animation, without user interaction | PASS |
+| TC-P18-04 | Picker toggle | The "React" button opens/closes a 5-emoji picker (👍❤️😂👏🎉) positioned above it; picking an emoji also closes the picker | PASS |
+
+Driven over CDP with two separate Chrome profiles (host + a true anonymous guest, avoiding the shared-profile cookie gotcha documented since Phase 10/11). Asserted on live DOM text content (`document.body.innerText` containing the emoji + sender name) rather than only visual inspection, plus one screenshot for a sanity check on the animation/positioning — the video tile fills the viewport at this window size, so the screenshot needed an explicit scroll to bring the control bar and reaction into frame; not a bug, just a fixed-size headless-window framing detail. No application bugs were found.

@@ -55,6 +55,12 @@ Chat (Phase 9) reuses the same `App\Events\...implements ShouldBroadcastNow` + `
 - Unlike WebRTC signaling and host control, chat is also reachable without an active Echo subscription: `GET /meetings/{code}/messages` (participant-gated the same way as the channel itself) returns full history, which `Room.vue` loads once on mount so a participant who joins mid-conversation sees prior messages, not just what arrives live afterward.
 - Rendering safety is entirely the frontend's responsibility: the API stores and returns the message text verbatim (see [API.md](API.md#chat)), and `Room.vue` renders it through Vue's default `{{ }}` mustache interpolation, which HTML-escapes automatically — the message is never passed through `v-html`.
 
+## Reactions Signaling
+
+Reactions (Phase 18, post-MVP) are a client whisper (`channel.whisper('reaction', { from, emoji })`) on the existing `meeting.{uuid}` channel — the opposite choice from chat, and deliberately so: a reaction has no history to preserve and no need to survive a page reload, so there's nothing for the server to be the source of truth for. Persisting it (a `meeting_reactions` table, a `ShouldBroadcastNow` event) would add a migration, a model, and a broadcast round-trip for a UI effect that's supposed to disappear in 2.5 seconds regardless.
+
+Because whispers aren't echoed back to their own sender (the same Reverb/Pusher-protocol behavior `participant.announce` and `media-state` already rely on), `sendReaction()` in `Room.vue` does two things on click: whispers it out to everyone else, and spawns the floating-emoji animation locally with the sender's own name — so the sender sees their own reaction the same way everyone else does, without a round-trip through the network.
+
 ## Waiting Room Signaling
 
 The waiting room (Phase 11) needs real-time notification in *two independent directions*, which is why it introduces both a new event class and a second private channel, rather than reusing `meeting.{uuid}`:

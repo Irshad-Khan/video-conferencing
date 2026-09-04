@@ -111,6 +111,11 @@ export interface MediaStatePayload {
     screenSharing?: boolean;
 }
 
+export interface ReactionPayload {
+    from: string;
+    emoji: string;
+}
+
 export interface ChatMessage {
     id: number;
     message: string;
