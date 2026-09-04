@@ -26,6 +26,7 @@ class MeetingJoinController extends Controller
             'meeting_code' => $meeting->meeting_code,
             'title' => $meeting->title,
             'host_name' => $meeting->host->name,
+            'host_user_id' => $meeting->host_user_id,
             'status' => $meeting->status,
             'has_password' => $meeting->has_password,
             'allow_guests' => $meeting->allow_guests,

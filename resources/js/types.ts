@@ -49,6 +49,7 @@ export interface MeetingLookup {
     meeting_code: string;
     title: string;
     host_name: string;
+    host_user_id: number;
     status: MeetingStatus;
     has_password: boolean;
     allow_guests: boolean;

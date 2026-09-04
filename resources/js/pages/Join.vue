@@ -32,6 +32,7 @@ let waitingChannel: EchoChannel | null = null;
 const isEndedOrCancelled = computed(
     () => lookup.value?.status === 'ended' || lookup.value?.status === 'cancelled',
 );
+const isHost = computed(() => !!state.user && state.user.id === lookup.value?.host_user_id);
 const needsGuestName = computed(() => !state.user && lookup.value?.allow_guests);
 const guestsBlocked = computed(() => !state.user && lookup.value && !lookup.value.allow_guests);
 
@@ -177,7 +178,9 @@ async function leaveMeeting(): Promise<void> {
             <div v-else-if="lookup" class="space-y-6">
                 <div>
                     <h1 class="text-xl font-semibold">{{ lookup.title }}</h1>
-                    <p class="text-sm text-neutral-400 mt-1">Hosted by {{ lookup.host_name }}</p>
+                    <p class="text-sm text-neutral-400 mt-1">
+                        {{ isHost ? "You're the host" : `Hosted by ${lookup.host_name}` }}
+                    </p>
                 </div>
 
                 <p v-if="isEndedOrCancelled" class="text-sm text-neutral-400">
@@ -185,7 +188,7 @@ async function leaveMeeting(): Promise<void> {
                 </p>
 
                 <template v-else>
-                    <p v-if="lookup.is_locked" class="text-sm text-amber-400">
+                    <p v-if="lookup.is_locked && !isHost" class="text-sm text-amber-400">
                         This meeting is currently locked by the host.
                     </p>
                     <p v-if="generalError" class="text-sm text-red-400">{{ generalError }}</p>
@@ -203,7 +206,7 @@ async function leaveMeeting(): Promise<void> {
                             <p v-if="errors.guest_name" class="text-sm text-red-400 mt-1">{{ errors.guest_name[0] }}</p>
                         </div>
 
-                        <div v-if="lookup.has_password">
+                        <div v-if="lookup.has_password && !isHost">
                             <label for="password" class="block text-sm text-neutral-300 mb-1">Meeting password</label>
                             <input
                                 id="password"

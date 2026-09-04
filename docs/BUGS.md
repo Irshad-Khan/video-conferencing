@@ -329,3 +329,28 @@ Added a "Join meeting" button to the "Live now" card in `Dashboard.vue`, next to
 
 Test:
 Reported by the user, live over CDP: registered a host, started a meeting via a direct API call (bypassing the dashboard's own create form to isolate the bug), confirmed the "Join meeting" button is present on the "Live now" card, clicked it through to the join lobby and then into the actual room (`/meeting/{code}/room`), and confirmed the host's own name appears as a participant there. Full backend suite (149/149) re-run and unaffected, since this is a frontend-only change.
+
+---
+
+## BUG-013
+
+Status: DONE
+
+Description:
+A direct follow-on from BUG-012's fix, caught immediately by the user re-testing it: the join lobby (`Join.vue`) had no way to know the current viewer *is* the meeting's own host, so a host clicking through the new "Join meeting" button on a password-protected meeting was shown a "Meeting password" field and asked to fill it in — even though `MeetingJoinController::join()` has always bypassed the password/lock checks for the host server-side (`! $isHost` guards). The field wasn't just unnecessary noise; a host unsure whether to fill it in (they may not know their own meeting's password was even required, or may not remember it) could be confused into thinking they were blocked.
+
+Steps:
+1. As host, create a meeting with a password set.
+2. Start it, then use the "Live now" card's "Join meeting" button (BUG-012's fix) to reach the join lobby.
+
+Expected:
+The host sees no password prompt and no "locked" warning — both are irrelevant to them, since the server already lets them straight through regardless.
+
+Actual:
+The lobby rendered exactly as it would for any other participant: a "Meeting password" input (and, if the meeting were locked, a "This meeting is currently locked by the host" warning), even though submitting empty always worked anyway once clicked.
+
+Fix:
+`GET /meetings/lookup/{code}` (`MeetingJoinController::lookup()`) now also returns `host_user_id` — a plain foreign-key integer, no more sensitive than `host_name`, which this same public endpoint was already returning. `Join.vue` computes `isHost = state.user?.id === lookup.host_user_id` and uses it to hide the password field and the locked-meeting warning, and to swap "Hosted by {name}" for "You're the host" in the header.
+
+Test:
+Live over CDP: host created a password-protected meeting, started it, and reached the join lobby via the dashboard's "Join meeting" button — confirmed no `#password` input exists in the DOM at all (not just visually hidden), the header reads "You're the host", and clicking "Join meeting" enters the room directly with zero password entry. `MeetingJoinTest.php`'s existing "wrong password is rejected"/"correct password allows joining" cases (which exercise a *non-host* participant) re-run unaffected, confirming the password check itself wasn't touched — only who sees the field for it.

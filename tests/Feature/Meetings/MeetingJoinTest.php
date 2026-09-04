@@ -22,6 +22,7 @@ class MeetingJoinTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.title', $meeting->title)
             ->assertJsonPath('data.host_name', 'Hosty McHostface')
+            ->assertJsonPath('data.host_user_id', $host->id)
             ->assertJsonPath('data.has_password', true)
             ->assertJsonMissingPath('data.password');
     }
