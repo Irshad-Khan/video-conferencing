@@ -377,3 +377,16 @@ Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend rou
 | TC-P18-04 | Picker toggle | The "React" button opens/closes a 5-emoji picker (👍❤️😂👏🎉) positioned above it; picking an emoji also closes the picker | PASS |
 
 Driven over CDP with two separate Chrome profiles (host + a true anonymous guest, avoiding the shared-profile cookie gotcha documented since Phase 10/11). Asserted on live DOM text content (`document.body.innerText` containing the emoji + sender name) rather than only visual inspection, plus one screenshot for a sanity check on the animation/positioning — the video tile fills the viewport at this window size, so the screenshot needed an explicit scroll to bring the control bar and reaction into frame; not a bug, just a fixed-size headless-window framing detail. No application bugs were found.
+
+## Phase 19 Verification Checklist (Raise Hand)
+
+Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend routes or Feature tests, same reasoning as Phase 18: a purely client-side whisper (see [WEBRTC.md](WEBRTC.md#hand-raise-signaling)).
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P19-00 | Backend/build unaffected | `php artisan test` (149/149) and `npm run build` both pass — no backend code touched | PASS |
+| TC-P19-01 | Raising reflects locally and remotely | Clicking "Raise hand ✋" flips the button to "Lower hand", shows a ✋ badge on the participant's own tile/panel row, and the same badge appears on the other participant's screen in real time, next to the raiser's correct name | PASS |
+| TC-P19-02 | Lowering reflects locally and remotely | Clicking "Lower hand" removes the badge on both ends in real time | PASS |
+| TC-P19-03 | Visible to any participant, not host-only | A non-host guest raising their hand is visible on the host's screen, confirming the badge isn't gated behind `isHost` | PASS |
+
+Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). One test-methodology catch during this pass: the control-bar button's own label, "Raise hand ✋", contains the ✋ glyph regardless of state, so a naive `document.body.innerText.includes('✋')` check can never go false — it always finds the button's own static text. Fixed by counting only DOM leaf nodes whose *entire* `textContent` is exactly `✋` (which matches only the tile/panel badges, never the button label), verified by first reproducing the false failure and confirming zero such exact-match nodes existed after lowering the hand, before trusting the fix. No application bugs were found.

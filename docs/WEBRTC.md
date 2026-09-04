@@ -61,6 +61,10 @@ Reactions (Phase 18, post-MVP) are a client whisper (`channel.whisper('reaction'
 
 Because whispers aren't echoed back to their own sender (the same Reverb/Pusher-protocol behavior `participant.announce` and `media-state` already rely on), `sendReaction()` in `Room.vue` does two things on click: whispers it out to everyone else, and spawns the floating-emoji animation locally with the sender's own name — so the sender sees their own reaction the same way everyone else does, without a round-trip through the network.
 
+## Hand-Raise Signaling
+
+Raise Hand (Phase 19, post-MVP) is also a client whisper (`hand-raise`, `{ from, raised }`) on `meeting.{uuid}`, for the same "no persistence needed" reasoning as reactions — but unlike a reaction, it's *state*, not a one-shot event: `Room.vue` tracks `peers[id].handRaised` (and a local `myHandRaised`) and only updates it on the next whisper, the same eventually-consistent model `media-state` already uses for mic/camera. This means, like mic/camera/screen-share state, a participant who joins mid-call won't see an already-raised hand until its owner happens to toggle it again — a pre-existing gap in how `participant.announce`/`webrtc-offer` initialize a new peer's tile (they carry only identity, not current media/hand state), not something Phase 19 introduces or fixes.
+
 ## Waiting Room Signaling
 
 The waiting room (Phase 11) needs real-time notification in *two independent directions*, which is why it introduces both a new event class and a second private channel, rather than reusing `meeting.{uuid}`:

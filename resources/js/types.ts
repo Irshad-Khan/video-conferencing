@@ -116,6 +116,11 @@ export interface ReactionPayload {
     emoji: string;
 }
 
+export interface HandRaisePayload {
+    from: string;
+    raised: boolean;
+}
+
 export interface ChatMessage {
     id: number;
     message: string;

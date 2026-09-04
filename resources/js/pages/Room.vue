@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
-import type { ChatMessage, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, ReactionPayload, WaitingParticipant, WaitingRoomPayload } from '../types';
+import type { ChatMessage, HandRaisePayload, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, ReactionPayload, WaitingParticipant, WaitingRoomPayload } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -29,6 +29,7 @@ interface PeerTile {
     micOn: boolean;
     cameraOn: boolean;
     screenSharing: boolean;
+    handRaised: boolean;
 }
 
 const error = ref('');
@@ -59,6 +60,7 @@ const waitingRoomOpen = ref(false);
 const waitingParticipants = ref<WaitingParticipant[]>([]);
 const waitingActionBusy = ref(false);
 const reactionPickerOpen = ref(false);
+const myHandRaised = ref(false);
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉'];
 
@@ -99,7 +101,7 @@ function connectionUiState(state: RTCPeerConnectionState): ConnectionState {
 function ensurePeer(id: string, name: string, participantId: number | null = null, role: ParticipantRole = 'participant'): RTCPeerConnection {
     if (connections[id]) return connections[id];
 
-    peers[id] = peers[id] ?? { id, name, participantId, role, stream: null, state: 'connecting', micOn: true, cameraOn: true, screenSharing: false };
+    peers[id] = peers[id] ?? { id, name, participantId, role, stream: null, state: 'connecting', micOn: true, cameraOn: true, screenSharing: false, handRaised: false };
 
     const pc = new RTCPeerConnection(iceConfig());
 
@@ -164,6 +166,7 @@ function attachSignalingListeners(): void {
                 micOn: true,
                 cameraOn: true,
                 screenSharing: false,
+                handRaised: false,
             };
             void createOfferTo(payload.id, payload.name);
         })
@@ -204,6 +207,11 @@ function attachSignalingListeners(): void {
         })
         .listenForWhisper('reaction', (payload: ReactionPayload) => {
             spawnReaction(payload.emoji, peers[payload.from]?.name ?? 'Someone');
+        })
+        .listenForWhisper('hand-raise', (payload: HandRaisePayload) => {
+            if (peers[payload.from]) {
+                peers[payload.from].handRaised = payload.raised;
+            }
         })
         .listen('.host.control', (payload: HostControlPayload) => {
             handleHostControl(payload);
@@ -280,6 +288,11 @@ function spawnReaction(emoji: string, name: string): void {
     setTimeout(() => {
         floatingReactions.value = floatingReactions.value.filter((r) => r.id !== id);
     }, 2500);
+}
+
+function toggleHand(): void {
+    myHandRaised.value = !myHandRaised.value;
+    channel?.whisper('hand-raise', { from: myId, raised: myHandRaised.value });
 }
 
 function sendReaction(emoji: string): void {
@@ -719,6 +732,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
                     <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
                         <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                        <div v-if="myHandRaised" class="absolute top-2 left-2 text-lg bg-black/60 rounded px-1.5 py-0.5">✋</div>
                         <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
                             You
                             <span v-if="!micOn">· muted</span>
@@ -738,6 +752,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         <div v-else class="w-full h-full flex items-center justify-center text-sm text-neutral-500">
                             {{ peer.state === 'connecting' ? 'Connecting…' : peer.state }}
                         </div>
+                        <div v-if="peer.handRaised" class="absolute top-2 left-2 text-lg bg-black/60 rounded px-1.5 py-0.5">✋</div>
                         <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
                             {{ peer.name }}
                             <span v-if="!peer.micOn">· muted</span>
@@ -811,6 +826,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <p class="text-sm text-neutral-100 truncate">
                                     You
                                     <span class="text-xs text-neutral-500">({{ roleLabel(myRole) }})</span>
+                                    <span v-if="myHandRaised">✋</span>
                                 </p>
                                 <p class="text-xs text-neutral-500">
                                     {{ micOn ? 'Mic on' : 'Mic off' }} · {{ cameraOn ? 'Camera on' : 'Camera off' }}
@@ -823,6 +839,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <p class="text-sm text-neutral-100 truncate">
                                     {{ peer.name }}
                                     <span class="text-xs text-neutral-500">({{ roleLabel(peer.role) }})</span>
+                                    <span v-if="peer.handRaised">✋</span>
                                 </p>
                                 <p class="text-xs text-neutral-500">
                                     {{ peer.micOn ? 'Mic on' : 'Mic off' }} · {{ peer.cameraOn ? 'Camera on' : 'Camera off' }}
@@ -936,6 +953,14 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     >
                         {{ waitingParticipants.length }}
                     </span>
+                </button>
+                <button
+                    type="button"
+                    class="rounded-full px-4 py-2 text-sm font-medium border border-neutral-800"
+                    :class="myHandRaised ? 'bg-amber-900/50 border-amber-800' : 'bg-neutral-900'"
+                    @click="toggleHand"
+                >
+                    {{ myHandRaised ? 'Lower hand' : 'Raise hand ✋' }}
                 </button>
                 <div class="relative">
                     <div
