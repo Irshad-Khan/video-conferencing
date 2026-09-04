@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
@@ -61,6 +61,8 @@ const waitingParticipants = ref<WaitingParticipant[]>([]);
 const waitingActionBusy = ref(false);
 const reactionPickerOpen = ref(false);
 const myHandRaised = ref(false);
+const viewMode = ref<'gallery' | 'speaker'>('gallery');
+const activeSpeakerId = ref('');
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉'];
 
@@ -82,6 +84,9 @@ let myName = 'Participant';
 let myParticipantId: number | null = null;
 let channel: EchoChannel | null = null;
 const connections: Record<string, RTCPeerConnection> = {};
+let audioContext: AudioContext | null = null;
+const analysers: Record<string, { analyser: AnalyserNode; data: Uint8Array }> = {};
+let speakerDetectionTimer: ReturnType<typeof setInterval> | null = null;
 
 function currentVideoTrack(): MediaStreamTrack | null {
     return screenStream?.getVideoTracks()[0] ?? localStream?.getVideoTracks()[0] ?? null;
@@ -119,6 +124,7 @@ function ensurePeer(id: string, name: string, participantId: number | null = nul
 
     pc.ontrack = (event) => {
         peers[id].stream = event.streams[0] ?? null;
+        attachAnalyser(id, peers[id].stream);
     };
 
     pc.onconnectionstatechange = () => {
@@ -148,7 +154,69 @@ function teardownPeer(id: string): void {
     connections[id]?.close();
     delete connections[id];
     delete peers[id];
+    delete analysers[id];
 }
+
+/**
+ * Taps a stream's audio track with a Web Audio AnalyserNode so detectActiveSpeaker()
+ * can compare real volume levels — this is genuine level detection, not a stand-in;
+ * it just can't be meaningfully live-verified in this headless-Chrome test harness,
+ * since --use-fake-device-for-media-stream produces identical synthetic audio for
+ * every participant, so no one is ever actually "louder" than anyone else there.
+ */
+function attachAnalyser(id: string, stream: MediaStream | null): void {
+    if (!stream || stream.getAudioTracks().length === 0) return;
+    try {
+        audioContext ??= new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analysers[id] = { analyser, data: new Uint8Array(analyser.frequencyBinCount) };
+    } catch {
+        // stream not ready yet, or already tapped — detection just skips this id
+    }
+}
+
+function detectActiveSpeaker(): void {
+    let loudestId = '';
+    let loudestLevel = 20; // silence threshold, above typical ambient/encoding noise floor
+    for (const id in analysers) {
+        const entry = analysers[id];
+        entry.analyser.getByteFrequencyData(entry.data);
+        let sum = 0;
+        for (let i = 0; i < entry.data.length; i++) sum += entry.data[i];
+        const avg = sum / entry.data.length;
+        if (avg > loudestLevel) {
+            loudestLevel = avg;
+            loudestId = id;
+        }
+    }
+    if (loudestId) activeSpeakerId.value = loudestId;
+}
+
+function toggleViewMode(): void {
+    viewMode.value = viewMode.value === 'gallery' ? 'speaker' : 'gallery';
+}
+
+function setLocalVideoEl(el: Element | null): void {
+    localVideo.value = el as HTMLVideoElement | null;
+    if (localVideo.value) {
+        localVideo.value.srcObject = screenStream ?? localStream;
+    }
+}
+
+// Speaker view's main tile: the loudest peer detected so far, falling back to the
+// first peer in the roster (a stable, deterministic choice) until detection kicks in
+// or if no one has crossed the silence threshold. Local video never becomes the main
+// tile — it stays in the thumbnail strip, the same self-view-stays-small convention
+// most video-call apps use — except when there are no peers at all (solo in the call).
+const activePeerTile = computed(() => {
+    const peerIds = Object.keys(peers);
+    if (peerIds.length === 0) return null;
+    const id = activeSpeakerId.value && peers[activeSpeakerId.value] ? activeSpeakerId.value : peerIds[0];
+    return peers[id];
+});
 
 function attachSignalingListeners(): void {
     if (!channel) return;
@@ -309,6 +377,14 @@ function teardown(): void {
     screenStream?.getTracks().forEach((track) => track.stop());
     screenStream = null;
 
+    if (speakerDetectionTimer) {
+        clearInterval(speakerDetectionTimer);
+        speakerDetectionTimer = null;
+    }
+    delete analysers[myId];
+    void audioContext?.close();
+    audioContext = null;
+
     if (joinData) {
         channel?.whisper('participant.bye', { id: myId });
         window.Echo.leave(`meeting.${joinData.meeting.meeting_uuid}`);
@@ -345,6 +421,8 @@ onMounted(async () => {
     if (localVideo.value) {
         localVideo.value.srcObject = localStream;
     }
+    attachAnalyser(myId, localStream);
+    speakerDetectionTimer = setInterval(detectActiveSpeaker, 700);
 
     const guestToken = sessionStorage.getItem(guestTokenKey);
     if (guestToken) {
@@ -729,9 +807,9 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         <span class="text-[10px] text-neutral-300 bg-neutral-950/70 rounded px-1 mt-1">{{ r.name }}</span>
                     </div>
                 </div>
-                <div class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
+                <div v-if="viewMode === 'gallery'" class="flex-1 grid gap-2 p-2 auto-rows-fr" :style="{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil(Math.sqrt(Object.keys(peers).length + 1)))}, minmax(0, 1fr))` }">
                     <div class="relative bg-neutral-900 rounded-lg overflow-hidden">
-                        <video ref="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                        <video :ref="setLocalVideoEl" autoplay muted playsinline class="w-full h-full object-cover"></video>
                         <div v-if="myHandRaised" class="absolute top-2 left-2 text-lg bg-black/60 rounded px-1.5 py-0.5">✋</div>
                         <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
                             You
@@ -777,6 +855,63 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             >
                                 Remove
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="flex-1 flex flex-col gap-2 p-2 min-h-0">
+                    <div class="flex-1 relative bg-neutral-900 rounded-lg overflow-hidden">
+                        <template v-if="activePeerTile">
+                            <video
+                                v-if="activePeerTile.stream"
+                                :ref="(el) => activePeerTile && setPeerVideoEl(activePeerTile.id, el)"
+                                autoplay
+                                playsinline
+                                class="w-full h-full object-cover"
+                            ></video>
+                            <div v-else class="w-full h-full flex items-center justify-center text-sm text-neutral-500">
+                                {{ activePeerTile.state === 'connecting' ? 'Connecting…' : activePeerTile.state }}
+                            </div>
+                            <div v-if="activePeerTile.handRaised" class="absolute top-2 left-2 text-lg bg-black/60 rounded px-1.5 py-0.5">✋</div>
+                            <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
+                                {{ activePeerTile.name }}
+                                <span v-if="!activePeerTile.micOn">· muted</span>
+                                <span v-if="!activePeerTile.cameraOn">· camera off</span>
+                                <span v-if="activePeerTile.screenSharing">· presenting</span>
+                            </div>
+                        </template>
+                        <template v-else>
+                            <video :ref="setLocalVideoEl" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                            <div v-if="myHandRaised" class="absolute top-2 left-2 text-lg bg-black/60 rounded px-1.5 py-0.5">✋</div>
+                            <div class="absolute bottom-2 left-2 text-xs bg-black/60 rounded px-2 py-1 flex items-center gap-1">
+                                You
+                                <span v-if="!micOn">· muted</span>
+                                <span v-if="!cameraOn">· camera off</span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="flex gap-2 h-24 shrink-0 overflow-x-auto">
+                        <div v-if="activePeerTile" class="relative w-32 h-full shrink-0 bg-neutral-900 rounded-lg overflow-hidden">
+                            <video :ref="setLocalVideoEl" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                            <div v-if="myHandRaised" class="absolute top-1 left-1 text-sm bg-black/60 rounded px-1">✋</div>
+                            <div class="absolute bottom-1 left-1 text-[10px] bg-black/60 rounded px-1">You</div>
+                        </div>
+                        <div
+                            v-for="peer in peers"
+                            v-show="!activePeerTile || peer.id !== activePeerTile.id"
+                            :key="peer.id"
+                            class="relative w-32 h-full shrink-0 bg-neutral-900 rounded-lg overflow-hidden"
+                        >
+                            <video
+                                v-if="peer.stream"
+                                :ref="(el) => setPeerVideoEl(peer.id, el)"
+                                autoplay
+                                playsinline
+                                class="w-full h-full object-cover"
+                            ></video>
+                            <div v-if="peer.handRaised" class="absolute top-1 left-1 text-sm bg-black/60 rounded px-1">✋</div>
+                            <div class="absolute bottom-1 left-1 text-[10px] bg-black/60 rounded px-1 truncate max-w-[90%]">{{ peer.name }}</div>
                         </div>
                     </div>
                 </div>
@@ -961,6 +1096,13 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     @click="toggleHand"
                 >
                     {{ myHandRaised ? 'Lower hand' : 'Raise hand ✋' }}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-full px-4 py-2 text-sm font-medium border border-neutral-800 bg-neutral-900"
+                    @click="toggleViewMode"
+                >
+                    {{ viewMode === 'gallery' ? 'Speaker view' : 'Gallery view' }}
                 </button>
                 <div class="relative">
                     <div

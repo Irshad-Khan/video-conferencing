@@ -390,3 +390,17 @@ Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend rou
 | TC-P19-03 | Visible to any participant, not host-only | A non-host guest raising their hand is visible on the host's screen, confirming the badge isn't gated behind `isHost` | PASS |
 
 Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). One test-methodology catch during this pass: the control-bar button's own label, "Raise hand ✋", contains the ✋ glyph regardless of state, so a naive `document.body.innerText.includes('✋')` check can never go false — it always finds the button's own static text. Fixed by counting only DOM leaf nodes whose *entire* `textContent` is exactly `✋` (which matches only the tile/panel badges, never the button label), verified by first reproducing the false failure and confirming zero such exact-match nodes existed after lowering the hand, before trusting the fix. No application bugs were found.
+
+## Phase 20 Verification Checklist (Gallery/Speaker View)
+
+Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend routes or Feature tests, same reasoning as Phases 18/19: purely client-side. See [WEBRTC.md](WEBRTC.md#active-speaker-detection) for why the *active-speaker-detection accuracy* itself is out of scope for this harness (every fake mic produces identical synthetic audio, so no participant is ever actually louder than another here) — what's verified below is the layout/structural behavior instead.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P20-00 | Backend/build unaffected | `php artisan test` (149/149) and `npm run build` both pass — no backend code touched | PASS |
+| TC-P20-01 | Toggle changes the actual layout | Clicking "Speaker view" removes the gallery `<div class="grid">` entirely (not just relabels the button) and replaces it with a main-stage-plus-thumbnail-strip layout | PASS |
+| TC-P20-02 | Remote participant becomes the main tile | With one peer in the call, that peer's video renders as the large main-stage element (non-muted `<video>`, distinct from the small `w-32` thumbnails) | PASS |
+| TC-P20-03 | Local video stays in the thumbnail strip | "You" appears in the small thumbnail strip in speaker mode, never as the main tile, while at least one peer is present | PASS |
+| TC-P20-04 | Toggling back restores Gallery | Clicking "Gallery view" restores the original 2-tile CSS grid | PASS |
+
+Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). No application bugs were found — all assertions passed on the first run.
