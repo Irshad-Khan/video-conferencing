@@ -93,6 +93,19 @@ const past = computed(() =>
 );
 
 const upcomingCount = computed(() => today.value.length + tomorrow.value.length + upcoming.value.length);
+const allScheduledEmpty = computed(() => upcomingCount.value === 0);
+
+const scheduleGroups = computed(() => [
+    { label: 'Today', items: today.value, empty: 'Nothing on your schedule today — enjoy the calm, or start an instant meeting.', dot: 'bg-indigo-400', accent: 'border-l-indigo-300 hover:border-l-indigo-500' },
+    { label: 'Tomorrow', items: tomorrow.value, empty: 'Nothing lined up for tomorrow yet.', dot: 'bg-violet-400', accent: 'border-l-violet-300 hover:border-l-violet-500' },
+    { label: 'Upcoming', items: upcoming.value, empty: 'No later meetings scheduled.', dot: 'bg-sky-400', accent: 'border-l-sky-300 hover:border-l-sky-500' },
+]);
+
+function dayBadge(iso: string | null): { dow: string; day: string } | null {
+    if (!iso) return null;
+    const date = new Date(iso);
+    return { dow: date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase(), day: String(date.getDate()) };
+}
 
 function formatDuration(minutes: number | null): string | null {
     if (!minutes) return null;
@@ -282,32 +295,32 @@ function formatDate(iso: string | null): string {
                 </div>
             </div>
 
-            <div v-if="!loading" class="relative mt-6 grid grid-cols-3 gap-3 border-t border-slate-100 pt-5">
-                <div class="flex items-center gap-2.5">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <div v-if="!loading" class="relative mt-6 grid grid-cols-3 gap-3">
+                <div class="flex items-center gap-3 rounded-xl bg-indigo-50/70 px-3.5 py-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                     </span>
                     <div>
-                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ meetings.length }}</p>
-                        <p class="text-xs text-slate-500 mt-1">Total meetings</p>
+                        <p class="text-lg font-semibold text-indigo-900 leading-none">{{ meetings.length }}</p>
+                        <p class="text-xs text-indigo-700/70 mt-1">Total meetings</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2.5">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                <div class="flex items-center gap-3 rounded-xl bg-violet-50/70 px-3.5 py-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                     </span>
                     <div>
-                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ upcomingCount }}</p>
-                        <p class="text-xs text-slate-500 mt-1">Upcoming</p>
+                        <p class="text-lg font-semibold text-violet-900 leading-none">{{ upcomingCount }}</p>
+                        <p class="text-xs text-violet-700/70 mt-1">Upcoming</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2.5">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+                <div class="flex items-center gap-3 rounded-xl bg-emerald-50/70 px-3.5 py-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
                     </span>
                     <div>
-                        <p class="text-lg font-semibold text-slate-900 leading-none">{{ live.length }}</p>
-                        <p class="text-xs text-slate-500 mt-1">Live now</p>
+                        <p class="text-lg font-semibold text-emerald-900 leading-none">{{ live.length }}</p>
+                        <p class="text-xs text-emerald-700/70 mt-1">Live now</p>
                     </div>
                 </div>
             </div>
@@ -463,84 +476,102 @@ function formatDate(iso: string | null): string {
                 </div>
             </section>
 
-            <section v-for="group in [
-                { label: 'Today', items: today, empty: 'Nothing on your schedule today — enjoy the calm, or start an instant meeting.', dot: 'bg-indigo-400' },
-                { label: 'Tomorrow', items: tomorrow, empty: 'Nothing lined up for tomorrow yet.', dot: 'bg-violet-400' },
-                { label: 'Upcoming', items: upcoming, empty: 'No later meetings scheduled.', dot: 'bg-sky-400' },
-            ]" :key="group.label" class="space-y-3">
-                <h2 class="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wide">
-                    <span class="h-1.5 w-1.5 rounded-full" :class="group.dot"></span>
-                    {{ group.label }}
-                    <span v-if="group.items.length" class="text-slate-300 normal-case font-normal">· {{ group.items.length }}</span>
-                </h2>
-                <div v-if="!group.items.length" class="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/></svg>
-                    {{ group.empty }}
+            <section v-if="allScheduledEmpty" class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-6 py-10 text-center">
+                <span class="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-50 to-violet-50 text-indigo-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16l2 2 4-4"/></svg>
+                </span>
+                <div>
+                    <p class="font-medium text-slate-800">You're all caught up</p>
+                    <p class="text-sm text-slate-500 mt-1">Nothing scheduled — start an instant meeting or plan one for later.</p>
                 </div>
-                <div
-                    v-for="meeting in group.items"
-                    :key="meeting.id"
-                    class="border border-slate-200 border-l-4 border-l-indigo-200 bg-white rounded-xl p-4 flex items-center justify-between gap-4 hover:shadow-sm hover:border-l-indigo-400 transition-all"
+                <button
+                    type="button"
+                    class="mt-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium px-4 py-2"
+                    @click="openCreateForm"
                 >
-                    <div>
-                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
-                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-xs text-slate-500">
-                            <span class="inline-flex items-center gap-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                                {{ formatDate(meeting.scheduled_at) }}
-                            </span>
-                            <template v-if="formatDuration(meeting.duration_minutes)">
-                                <span class="inline-flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-                                    {{ formatDuration(meeting.duration_minutes) }}
-                                </span>
-                            </template>
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-1 rounded font-mono bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 hover:border-indigo-300 transition-colors"
-                                @click="copyCode(meeting.meeting_code)"
-                            >
-                                {{ meeting.meeting_code }}
-                                <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
+                    + New meeting
+                </button>
+            </section>
+
+            <template v-else>
+                <section v-for="group in scheduleGroups" :key="group.label" v-show="group.items.length" class="space-y-3">
+                    <h2 class="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wide">
+                        <span class="h-1.5 w-1.5 rounded-full" :class="group.dot"></span>
+                        {{ group.label }}
+                        <span class="text-slate-300 normal-case font-normal">· {{ group.items.length }}</span>
+                    </h2>
+                    <div
+                        v-for="meeting in group.items"
+                        :key="meeting.id"
+                        class="border border-slate-200 border-l-4 bg-white rounded-xl p-4 flex items-center gap-4 hover:shadow-sm transition-all"
+                        :class="group.accent"
+                    >
+                        <div v-if="dayBadge(meeting.scheduled_at)" class="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-50 border border-slate-200 w-11 h-11 leading-none">
+                            <span class="text-[9px] font-medium text-slate-400">{{ dayBadge(meeting.scheduled_at)?.dow }}</span>
+                            <span class="text-sm font-semibold text-slate-700 mt-0.5">{{ dayBadge(meeting.scheduled_at)?.day }}</span>
+                        </div>
+                        <div class="flex-1 min-w-0 flex items-center justify-between gap-4">
+                            <div class="min-w-0">
+                                <p class="font-medium text-slate-900 truncate">{{ meeting.title }}</p>
+                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-xs text-slate-500">
+                                    <span class="inline-flex items-center gap-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                        {{ formatDate(meeting.scheduled_at) }}
+                                    </span>
+                                    <template v-if="formatDuration(meeting.duration_minutes)">
+                                        <span class="inline-flex items-center gap-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                            {{ formatDuration(meeting.duration_minutes) }}
+                                        </span>
+                                    </template>
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center gap-1 rounded font-mono bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 hover:border-indigo-300 transition-colors"
+                                        @click="copyCode(meeting.meeting_code)"
+                                    >
+                                        {{ meeting.meeting_code }}
+                                        <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                                        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    :disabled="actionMeetingId === meeting.id"
+                                    class="text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors px-3 py-1.5 disabled:opacity-50"
+                                    @click="runAction(meeting, 'start')"
+                                >
+                                    Start
+                                </button>
+                                <button
+                                    type="button"
+                                    class="text-sm text-slate-500 hover:text-slate-800"
+                                    @click="openEditForm(meeting)"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    type="button"
+                                    :disabled="actionMeetingId === meeting.id"
+                                    class="text-sm text-slate-500 hover:text-slate-800 disabled:opacity-50"
+                                    @click="runAction(meeting, 'cancel')"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    :disabled="actionMeetingId === meeting.id"
+                                    class="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
+                                    @click="deleteMeeting(meeting)"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        <button
-                            type="button"
-                            :disabled="actionMeetingId === meeting.id"
-                            class="text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors px-3 py-1.5 disabled:opacity-50"
-                            @click="runAction(meeting, 'start')"
-                        >
-                            Start
-                        </button>
-                        <button
-                            type="button"
-                            class="text-sm text-slate-500 hover:text-slate-800"
-                            @click="openEditForm(meeting)"
-                        >
-                            Edit
-                        </button>
-                        <button
-                            type="button"
-                            :disabled="actionMeetingId === meeting.id"
-                            class="text-sm text-slate-500 hover:text-slate-800 disabled:opacity-50"
-                            @click="runAction(meeting, 'cancel')"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            :disabled="actionMeetingId === meeting.id"
-                            class="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
-                            @click="deleteMeeting(meeting)"
-                        >
-                            Delete
-                        </button>
-                    </div>
-                </div>
-            </section>
+                </section>
+            </template>
 
             <section class="space-y-3">
                 <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">Past</h2>
@@ -551,7 +582,7 @@ function formatDate(iso: string | null): string {
                 <div
                     v-for="meeting in past"
                     :key="meeting.id"
-                    class="border border-slate-200 bg-slate-50 rounded-xl p-4 flex items-center justify-between gap-4 opacity-75"
+                    class="border border-slate-200 bg-slate-50/70 rounded-xl p-4 flex items-center justify-between gap-4"
                 >
                     <div>
                         <p class="font-medium text-slate-900">{{ meeting.title }}</p>
