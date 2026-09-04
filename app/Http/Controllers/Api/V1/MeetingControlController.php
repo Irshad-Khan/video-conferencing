@@ -146,6 +146,29 @@ class MeetingControlController extends Controller
         return response()->json(['data' => ['muted' => true]]);
     }
 
+    public function spotlightParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse
+    {
+        Gate::authorize('manageParticipants', $meeting);
+        abort_if($participant->meeting_id !== $meeting->id, 404);
+
+        if ($participant->status !== MeetingParticipant::STATUS_JOINED) {
+            return response()->json(['message' => 'This participant is not currently in the call.'], 409);
+        }
+
+        broadcast(new HostControlEvent($meeting, 'spotlight', ['target' => $participant->presenceId()]));
+
+        return response()->json(['data' => ['spotlighted' => true]]);
+    }
+
+    public function clearSpotlight(Meeting $meeting): JsonResponse
+    {
+        Gate::authorize('manageParticipants', $meeting);
+
+        broadcast(new HostControlEvent($meeting, 'spotlight-cleared'));
+
+        return response()->json(['data' => ['spotlighted' => false]]);
+    }
+
     public function removeParticipant(Meeting $meeting, MeetingParticipant $participant): JsonResponse
     {
         Gate::authorize('manageParticipants', $meeting);

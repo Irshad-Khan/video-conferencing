@@ -63,6 +63,8 @@ const reactionPickerOpen = ref(false);
 const myHandRaised = ref(false);
 const viewMode = ref<'gallery' | 'speaker'>('gallery');
 const activeSpeakerId = ref('');
+const pinnedId = ref(''); // local-only viewer preference, not synced to anyone else
+const spotlightedId = ref(''); // host-set, broadcast to and forced for every participant
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉'];
 
@@ -214,8 +216,12 @@ function setLocalVideoEl(el: Element | null): void {
 const activePeerTile = computed(() => {
     const peerIds = Object.keys(peers);
     if (peerIds.length === 0) return null;
-    const id = activeSpeakerId.value && peers[activeSpeakerId.value] ? activeSpeakerId.value : peerIds[0];
-    return peers[id];
+    // Priority: host spotlight (forced for everyone) > this viewer's own pin (local-only)
+    // > detected active speaker > first peer, as a stable deterministic fallback.
+    for (const id of [spotlightedId.value, pinnedId.value, activeSpeakerId.value]) {
+        if (id && peers[id]) return peers[id];
+    }
+    return peers[peerIds[0]];
 });
 
 function attachSignalingListeners(): void {
@@ -345,6 +351,12 @@ function handleHostControl(payload: HostControlPayload): void {
             break;
         case 'waiting-room-disabled':
             waitingRoomEnabled.value = false;
+            break;
+        case 'spotlight':
+            spotlightedId.value = payload.target ?? '';
+            break;
+        case 'spotlight-cleared':
+            spotlightedId.value = '';
             break;
     }
 }
@@ -722,6 +734,38 @@ async function muteParticipant(peer: PeerTile): Promise<void> {
     }
 }
 
+async function spotlightParticipant(peer: PeerTile): Promise<void> {
+    if (!joinData || !peer.participantId || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/participants/${peer.participantId}/spotlight`);
+    } catch {
+        hostActionError.value = `Could not spotlight ${peer.name}. Please try again.`;
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+async function clearSpotlight(): Promise<void> {
+    if (!joinData || hostActionBusy.value) return;
+    hostActionBusy.value = true;
+    hostActionError.value = '';
+
+    try {
+        await api.post(`/meetings/${joinData.meeting.meeting_uuid}/spotlight/clear`);
+    } catch {
+        hostActionError.value = 'Could not clear the spotlight. Please try again.';
+    } finally {
+        hostActionBusy.value = false;
+    }
+}
+
+function togglePin(peerId: string): void {
+    pinnedId.value = pinnedId.value === peerId ? '' : peerId;
+}
+
 async function removeParticipant(peer: PeerTile): Promise<void> {
     if (!joinData || !peer.participantId || hostActionBusy.value) return;
     if (!confirm(`Remove ${peer.name} from this meeting?`)) return;
@@ -816,6 +860,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             <span v-if="!micOn">· muted</span>
                             <span v-if="!cameraOn">· camera off</span>
                             <span v-if="screenSharing">· presenting</span>
+                            <span v-if="spotlightedId === myId">· spotlighted</span>
                         </div>
                     </div>
 
@@ -836,6 +881,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             <span v-if="!peer.micOn">· muted</span>
                             <span v-if="!peer.cameraOn">· camera off</span>
                             <span v-if="peer.screenSharing">· presenting</span>
+                            <span v-if="spotlightedId === peer.id">· spotlighted</span>
+                            <span v-else-if="pinnedId === peer.id">· pinned</span>
                             <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
                         </div>
                         <div v-if="isHost && peer.participantId" class="absolute top-2 right-2 flex items-center gap-1">
@@ -878,6 +925,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <span v-if="!activePeerTile.micOn">· muted</span>
                                 <span v-if="!activePeerTile.cameraOn">· camera off</span>
                                 <span v-if="activePeerTile.screenSharing">· presenting</span>
+                                <span v-if="spotlightedId === activePeerTile.id">· spotlighted</span>
+                                <span v-else-if="pinnedId === activePeerTile.id">· pinned</span>
                             </div>
                         </template>
                         <template v-else>
@@ -887,6 +936,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 You
                                 <span v-if="!micOn">· muted</span>
                                 <span v-if="!cameraOn">· camera off</span>
+                                <span v-if="spotlightedId === myId">· spotlighted</span>
                             </div>
                         </template>
                     </div>
@@ -895,7 +945,9 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         <div v-if="activePeerTile" class="relative w-32 h-full shrink-0 bg-neutral-900 rounded-lg overflow-hidden">
                             <video :ref="setLocalVideoEl" autoplay muted playsinline class="w-full h-full object-cover"></video>
                             <div v-if="myHandRaised" class="absolute top-1 left-1 text-sm bg-black/60 rounded px-1">✋</div>
-                            <div class="absolute bottom-1 left-1 text-[10px] bg-black/60 rounded px-1">You</div>
+                            <div class="absolute bottom-1 left-1 text-[10px] bg-black/60 rounded px-1">
+                                You<span v-if="spotlightedId === myId"> · spotlighted</span>
+                            </div>
                         </div>
                         <div
                             v-for="peer in peers"
@@ -965,6 +1017,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 </p>
                                 <p class="text-xs text-neutral-500">
                                     {{ micOn ? 'Mic on' : 'Mic off' }} · {{ cameraOn ? 'Camera on' : 'Camera off' }}
+                                    <span v-if="spotlightedId === myId">· spotlighted</span>
                                 </p>
                             </div>
                         </div>
@@ -981,23 +1034,42 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                     <span v-if="peer.state !== 'connected'">· {{ peer.state }}</span>
                                 </p>
                             </div>
-                            <div v-if="isHost && peer.participantId" class="flex items-center gap-1 shrink-0">
+                            <div class="flex items-center gap-1 shrink-0">
                                 <button
                                     type="button"
-                                    :disabled="hostActionBusy"
-                                    class="text-xs bg-neutral-900 hover:bg-neutral-800 rounded px-2 py-1 disabled:opacity-50"
-                                    @click="muteParticipant(peer)"
+                                    class="text-xs rounded px-2 py-1"
+                                    :class="pinnedId === peer.id ? 'bg-blue-900/60 hover:bg-blue-900/80' : 'bg-neutral-900 hover:bg-neutral-800'"
+                                    @click="togglePin(peer.id)"
                                 >
-                                    Mute
+                                    {{ pinnedId === peer.id ? 'Unpin' : 'Pin' }}
                                 </button>
-                                <button
-                                    type="button"
-                                    :disabled="hostActionBusy"
-                                    class="text-xs bg-neutral-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
-                                    @click="removeParticipant(peer)"
-                                >
-                                    Remove
-                                </button>
+                                <template v-if="isHost && peer.participantId">
+                                    <button
+                                        type="button"
+                                        :disabled="hostActionBusy"
+                                        class="text-xs bg-neutral-900 hover:bg-neutral-800 rounded px-2 py-1 disabled:opacity-50"
+                                        @click="muteParticipant(peer)"
+                                    >
+                                        Mute
+                                    </button>
+                                    <button
+                                        type="button"
+                                        :disabled="hostActionBusy"
+                                        class="text-xs rounded px-2 py-1 disabled:opacity-50"
+                                        :class="spotlightedId === peer.id ? 'bg-amber-900/60 hover:bg-amber-900/80' : 'bg-neutral-900 hover:bg-neutral-800'"
+                                        @click="spotlightedId === peer.id ? clearSpotlight() : spotlightParticipant(peer)"
+                                    >
+                                        {{ spotlightedId === peer.id ? 'Unspotlight' : 'Spotlight' }}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        :disabled="hostActionBusy"
+                                        class="text-xs bg-neutral-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                        @click="removeParticipant(peer)"
+                                    >
+                                        Remove
+                                    </button>
+                                </template>
                             </div>
                         </div>
                     </div>

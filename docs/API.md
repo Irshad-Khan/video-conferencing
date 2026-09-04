@@ -135,6 +135,12 @@ Response: `200 {"data": {...participant}}`, or `409` if the participant isn't cu
 Force-mutes a participant currently in the call (broadcasts `action: mute` with the participant's `presenceId()` as `target`; the target's own client disables its mic).
 Response: `200 {"data": {"muted": true}}`, or `409` if the participant isn't currently `joined`, or `404` if `{participant}` doesn't belong to `{meeting}`.
 
+### `POST /api/v1/meetings/{meeting}/participants/{participant}/spotlight` / `POST /api/v1/meetings/{meeting}/spotlight/clear`
+
+Forces every participant's Speaker view (Phase 20) to show this one as the main tile, overriding both active-speaker detection and any individual viewer's own local "Pin" (Pin is entirely client-side — see [WEBRTC.md](WEBRTC.md#active-speaker-detection) — so it isn't a server concept and has no endpoint). Broadcasts `action: spotlight` (`target` = the participant's `presenceId()`) or `action: spotlight-cleared` on `.host.control`, the same event type/channel host mute/remove/lock already use.
+Response (`spotlight`): `200 {"data": {"spotlighted": true}}`, or `409` if the participant isn't currently `joined`, or `404` if `{participant}` doesn't belong to `{meeting}`.
+Response (`spotlight/clear`): `200 {"data": {"spotlighted": false}}`.
+
 ### `POST /api/v1/meetings/{meeting}/participants/{participant}/remove`
 
 Sets the participant's `status` to `removed` and disconnects them in real time.

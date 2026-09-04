@@ -58,6 +58,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/meetings/{meeting}/participants/{participant}/admit', [MeetingControlController::class, 'admitParticipant']);
         Route::post('/meetings/{meeting}/participants/{participant}/reject', [MeetingControlController::class, 'rejectParticipant']);
         Route::post('/meetings/{meeting}/participants/{participant}/mute', [MeetingControlController::class, 'muteParticipant']);
+        Route::post('/meetings/{meeting}/participants/{participant}/spotlight', [MeetingControlController::class, 'spotlightParticipant']);
+        Route::post('/meetings/{meeting}/spotlight/clear', [MeetingControlController::class, 'clearSpotlight']);
         Route::post('/meetings/{meeting}/participants/{participant}/remove', [MeetingControlController::class, 'removeParticipant']);
 
         Route::prefix('admin')->middleware(EnsureUserIsAdmin::class)->group(function () {

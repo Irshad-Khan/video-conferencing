@@ -92,6 +92,54 @@ class MeetingControlsTest extends TestCase
             ->assertStatus(409);
     }
 
+    public function test_the_host_can_spotlight_a_participant(): void
+    {
+        Event::fake([HostControlEvent::class]);
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $participant = MeetingParticipant::factory()->for($meeting)->create([
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/spotlight")
+            ->assertStatus(200)
+            ->assertJsonPath('data.spotlighted', true);
+
+        Event::assertDispatched(HostControlEvent::class, function (HostControlEvent $event) use ($participant) {
+            return $event->action === 'spotlight' && $event->data['target'] === $participant->presenceId();
+        });
+    }
+
+    public function test_spotlighting_a_participant_who_is_not_currently_joined_returns_409(): void
+    {
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $participant = MeetingParticipant::factory()->for($meeting)->create([
+            'status' => MeetingParticipant::STATUS_LEFT,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/participants/{$participant->id}/spotlight")
+            ->assertStatus(409);
+    }
+
+    public function test_the_host_can_clear_the_spotlight(): void
+    {
+        Event::fake([HostControlEvent::class]);
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_uuid}/spotlight/clear")
+            ->assertStatus(200)
+            ->assertJsonPath('data.spotlighted', false);
+
+        Event::assertDispatched(HostControlEvent::class, fn (HostControlEvent $event) => $event->action === 'spotlight-cleared');
+    }
+
     public function test_the_host_can_remove_a_participant(): void
     {
         Event::fake([HostControlEvent::class]);

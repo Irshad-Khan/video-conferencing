@@ -404,3 +404,18 @@ Verified 2026-09-04, mcsirshad95@gmail.com. Post-MVP addition — no backend rou
 | TC-P20-04 | Toggling back restores Gallery | Clicking "Gallery view" restores the original 2-tile CSS grid | PASS |
 
 Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). No application bugs were found — all assertions passed on the first run.
+
+## Phase 21 Verification Checklist (Pin/Spotlight Participant)
+
+Verified 2026-09-04, mcsirshad95@gmail.com. Spotlight has real backend routes/tests (unlike Phases 18-20); Pin is purely client-side (no backend involvement) — see [WEBRTC.md](WEBRTC.md#active-speaker-detection).
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P21-00 | Automated suite | `php artisan test` passes | PASS (152/152 tests, 511 assertions — adds 3 cases to `MeetingControlsTest.php` plus boundary assertions to `MeetingControlsAuthorizationTest.php`) |
+| TC-P21-01 | Pin selects a specific peer, locally only | With 2 peers present, pinning one makes it the Speaker-view main tile on the pinning viewer's own screen; a different participant's screen is unaffected | PASS |
+| TC-P21-02 | Spotlight overrides Pin | Host spotlighting a *different* peer than the one currently pinned correctly becomes the main tile instead — proving the priority order (spotlight > pin), not just "whichever's available" | PASS |
+| TC-P21-03 | Spotlight broadcasts to every participant in real time | All three participants (host + 2 guests) see the spotlighted participant's "· spotlighted" label appear, including the spotlighted participant's own tile | PASS |
+| TC-P21-04 | Clearing the spotlight propagates too | `POST .../spotlight/clear` removes the label on every participant's screen in real time | PASS |
+| TC-P21-05 | Server-side authorization | A guest gets `401` and a non-host participant gets `403` from both spotlight endpoints; targeting a participant from a different meeting returns `404` | PASS (automated, `MeetingControlsAuthorizationTest`) |
+
+Driven over CDP with **three** participants across three independent Chrome profiles (host + two true anonymous guests) — two peers were necessary to prove the main-tile selection logic actually *differentiates* between candidates, since with only one peer present any selection logic trivially resolves to "the only option" regardless of whether pin/spotlight priority is implemented correctly. One real gap found and fixed during this pass: the spotlighted participant's own screen showed no indication they were the one spotlighted, since `activePeerTile`'s selection logic (and the tile labels showing "· spotlighted") only ever look at *peers*, and a participant is never their own peer — so being spotlighted was, from the spotlighted person's own point of view, entirely invisible. Fixed by adding the same "· spotlighted" label to the local tile (in both Gallery and Speaker view, plus the Participants panel's "You" row) whenever `spotlightedId === myId`. Caught by a test assertion checking the spotlighted guest's *own* screen, not just the host's/other guest's.
