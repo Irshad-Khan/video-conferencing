@@ -32,6 +32,8 @@ Route::prefix('v1')->group(function () {
         ->middleware('throttle:60,1');
     Route::post('/meetings/{code}/messages', [MeetingMessageController::class, 'store'])
         ->middleware('throttle:30,1');
+    Route::get('/meetings/{code}/messages/{message}/attachment', [MeetingMessageController::class, 'attachment'])
+        ->middleware('throttle:60,1');
 
     Route::middleware(['auth:sanctum', EnsureUserIsNotDisabled::class])->group(function () {
         Route::post('/auth/logout', [AuthenticatedSessionController::class, 'destroy']);

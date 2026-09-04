@@ -40,13 +40,6 @@ class ChatMessageEvent implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
-        return [
-            'id' => $this->message->id,
-            'message' => $this->message->message,
-            'sender_name' => $this->message->senderName(),
-            'sender_role' => $this->message->participant?->role,
-            'presence_id' => $this->message->participant?->presenceId(),
-            'created_at' => $this->message->created_at->toIso8601String(),
-        ];
+        return $this->message->toChatPayload($this->meeting->meeting_code);
     }
 }

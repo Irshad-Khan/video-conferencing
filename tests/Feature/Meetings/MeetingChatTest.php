@@ -4,10 +4,13 @@ namespace Tests\Feature\Meetings;
 
 use App\Events\ChatMessageEvent;
 use App\Models\Meeting;
+use App\Models\MeetingMessage;
 use App\Models\MeetingParticipant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MeetingChatTest extends TestCase
@@ -217,6 +220,214 @@ class MeetingChatTest extends TestCase
 
         $this->getJson("/api/v1/meetings/{$meeting->meeting_code}/messages?guest_token=not-a-real-token")
             ->assertStatus(403);
+    }
+
+    public function test_a_participant_can_send_a_message_with_an_image_attachment(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $image = UploadedFile::fake()->create('screenshot.png', 50, 'image/png');
+
+        $response = $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'message' => 'check this out',
+                'attachment' => $image,
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.attachment.name', 'screenshot.png')
+            ->assertJsonPath('data.attachment.is_image', true);
+
+        $storedPath = MeetingMessage::first()->attachment_path;
+        Storage::disk('local')->assertExists($storedPath);
+        $this->assertNotSame('screenshot.png', basename($storedPath));
+    }
+
+    public function test_an_attachment_alone_without_message_text_is_allowed(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('notes.pdf', 100, 'application/pdf'),
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.message', null)
+            ->assertJsonPath('data.attachment.is_image', false);
+    }
+
+    public function test_neither_message_nor_attachment_is_rejected(): void
+    {
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('message');
+    }
+
+    public function test_an_attachment_over_the_size_limit_is_rejected(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('huge.pdf', 6000, 'application/pdf'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('attachment');
+
+        $this->assertDatabaseCount('meeting_messages', 0);
+    }
+
+    public function test_a_disallowed_file_type_is_rejected(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('script.exe', 10, 'application/x-msdownload'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('attachment');
+
+        $this->assertDatabaseCount('meeting_messages', 0);
+    }
+
+    public function test_a_participant_can_download_an_attachment(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $upload = $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('pic.jpg', 50, 'image/jpeg'),
+            ])
+            ->assertStatus(201);
+
+        $messageId = $upload->json('data.id');
+
+        $this->actingAs($host)
+            ->get("/api/v1/meetings/{$meeting->meeting_code}/messages/{$messageId}/attachment")
+            ->assertStatus(200)
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function test_a_guest_can_download_an_attachment_via_their_guest_token(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+
+        $joinResponse = $this->postJson("/api/v1/meetings/{$meeting->meeting_code}/join", ['guest_name' => 'Gary Guest'])
+            ->assertStatus(200);
+        $guestToken = $joinResponse->json('data.guest_token');
+
+        $upload = $this->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+            'attachment' => UploadedFile::fake()->create('pic.jpg', 50, 'image/jpeg'),
+            'guest_token' => $guestToken,
+        ])->assertStatus(201);
+
+        $messageId = $upload->json('data.id');
+
+        $this->get("/api/v1/meetings/{$meeting->meeting_code}/messages/{$messageId}/attachment?guest_token={$guestToken}")
+            ->assertStatus(200);
+    }
+
+    public function test_a_non_participant_cannot_download_an_attachment(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $upload = $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('pic.jpg', 50, 'image/jpeg'),
+            ])
+            ->assertStatus(201);
+
+        $messageId = $upload->json('data.id');
+
+        // actingAs($host) above stays in effect for subsequent calls within this same
+        // test method (a Sanctum RequestGuard quirk documented elsewhere in this
+        // project) — forget it so this really is an anonymous guest request.
+        $this->app['auth']->forgetGuards();
+        $this->get("/api/v1/meetings/{$meeting->meeting_code}/messages/{$messageId}/attachment")
+            ->assertStatus(403);
+
+        $stranger = User::factory()->create();
+        $this->actingAs($stranger)
+            ->get("/api/v1/meetings/{$meeting->meeting_code}/messages/{$messageId}/attachment")
+            ->assertStatus(403);
+    }
+
+    public function test_an_attachment_belonging_to_another_meeting_cannot_be_targeted(): void
+    {
+        Storage::fake('local');
+
+        $host = User::factory()->create();
+        $meeting = Meeting::factory()->live()->for($host, 'host')->create();
+        $otherMeeting = Meeting::factory()->live()->create();
+        MeetingParticipant::factory()->for($meeting)->for($host, 'user')->create([
+            'role' => MeetingParticipant::ROLE_HOST,
+            'status' => MeetingParticipant::STATUS_JOINED,
+        ]);
+
+        $upload = $this->actingAs($host)
+            ->postJson("/api/v1/meetings/{$meeting->meeting_code}/messages", [
+                'attachment' => UploadedFile::fake()->create('pic.jpg', 50, 'image/jpeg'),
+            ])
+            ->assertStatus(201);
+
+        $messageId = $upload->json('data.id');
+
+        $this->actingAs($host)
+            ->get("/api/v1/meetings/{$otherMeeting->meeting_code}/messages/{$messageId}/attachment")
+            ->assertStatus(404);
     }
 
     public function test_an_unknown_meeting_code_returns_404(): void

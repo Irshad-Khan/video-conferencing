@@ -67,7 +67,11 @@ Constraint (app-level, enforced in the join controller, not a DB CHECK): exactly
 | meeting_id | FK → meetings.id | |
 | user_id | FK → users.id, nullable | nullable to allow guest messages tied to the participant instead |
 | meeting_participant_id | FK → meeting_participants.id, nullable | resolves sender identity for guests |
-| message | text | sanitized/escaped on render, never stored pre-rendered as HTML |
+| message | text nullable | sanitized/escaped on render, never stored pre-rendered as HTML; nullable since Phase 23 (an attachment-only message has no text) — the original Phase 9 migration left this `NOT NULL`, fixed by a follow-up migration once it broke attachment-only sends |
+| attachment_path | string nullable | Phase 23 — path on the `local` storage disk (outside the public webroot); Laravel's auto-generated random filename, never the client's original name |
+| attachment_original_name | string nullable | Phase 23 — display-only filename, never used to address the file on disk |
+| attachment_mime_type | string nullable | Phase 23 — server-detected (`UploadedFile::getMimeType()`), never client-asserted |
+| attachment_size | unsigned int nullable | Phase 23 — server-detected (`UploadedFile::getSize()`), bytes |
 | created_at | timestamp | messages are immutable, no updated_at needed |
 
 Indexes: index(`meeting_id`, `created_at`).

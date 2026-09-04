@@ -38,7 +38,9 @@ Never trust client-supplied `user_id`, `role`, `host_id`, `meeting_id`, or `perm
 
 ## File Handling
 
-Not applicable to the MVP (no file uploads planned); if added later (e.g. avatars, recordings), uploads will be validated by MIME/type/size, stored outside the public webroot where possible, and served via signed URLs — documented here before implementation, per the project's "document before building" rule.
+Implemented in Phase 23 (post-MVP) for chat attachments — the first file upload surface in the app. `POST /messages` validates the `attachment` field by size (5MB max) and extension/MIME (`jpg,jpeg,png,gif,webp,pdf,txt,csv,doc,docx,xls,xlsx,zip` only), and the controller reads the actual detected MIME type/size from the uploaded file (`getMimeType()`/`getSize()`) rather than trusting any client-supplied value. Files are stored on the `local` disk, whose root (`storage/app/private`) sits outside the public webroot with no symlink into it — not web-accessible by path guessing. The stored filename is Laravel's own randomly-generated hash, never the client's original filename, which rules out path traversal and filename collisions; the original name is kept only as display metadata.
+
+Download deliberately uses a **participant-gated streaming endpoint** (`GET /messages/{message}/attachment`) rather than the signed-URL approach originally sketched here pre-implementation: every request re-validates the caller is *currently* an active participant of that specific meeting, the same rule chat itself already enforces, so access is revoked in real time if the caller is later removed or the meeting ends — a signed URL would stay valid for its whole window regardless of a later removal. Guests authenticate the same way they do elsewhere for non-header-capable requests: `?guest_token=...` as a query param, since a plain `<img src>`/`<a href>` can't set the `X-Guest-Token` header. Responses carry `X-Content-Type-Options: nosniff`. See [API.md](API.md#chat) and [WEBRTC.md](WEBRTC.md#chat-signaling).
 
 ## Review Cadence
 

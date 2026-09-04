@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { isAxiosError } from 'axios';
 import api from '../lib/api';
 import { useAuth } from '../stores/auth';
 import type { ChatMessage, HandRaisePayload, HostControlPayload, JoinMeetingResponse, MediaStatePayload, ParticipantRole, ReactionPayload, WaitingParticipant, WaitingRoomPayload } from '../types';
@@ -50,6 +51,9 @@ const screenShareSupported = !!navigator.mediaDevices?.getDisplayMedia;
 const chatOpen = ref(false);
 const chatMessages = ref<ChatMessage[]>([]);
 const chatDraft = ref('');
+const chatAttachment = ref<File | null>(null);
+const chatAttachmentInput = ref<HTMLInputElement | null>(null);
+const chatAttachmentError = ref('');
 const chatError = ref('');
 const chatSending = ref(false);
 const unreadCount = ref(0);
@@ -608,22 +612,52 @@ function roleLabel(role: ParticipantRole): string {
     return 'Participant';
 }
 
+function onAttachmentSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    chatAttachmentError.value = '';
+    chatAttachment.value = input.files?.[0] ?? null;
+}
+
+function clearAttachment(): void {
+    chatAttachment.value = null;
+    if (chatAttachmentInput.value) chatAttachmentInput.value.value = '';
+}
+
+function attachmentUrl(attachment: { url: string }): string {
+    const guestToken = sessionStorage.getItem(guestTokenKey);
+    return guestToken ? `${attachment.url}?guest_token=${encodeURIComponent(guestToken)}` : attachment.url;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 async function sendChatMessage(): Promise<void> {
     const text = chatDraft.value.trim();
-    if (!text || chatSending.value) return;
+    if ((!text && !chatAttachment.value) || chatSending.value) return;
 
     chatSending.value = true;
     chatError.value = '';
+    chatAttachmentError.value = '';
     const guestToken = sessionStorage.getItem(guestTokenKey);
 
+    const form = new FormData();
+    if (text) form.append('message', text);
+    if (chatAttachment.value) form.append('attachment', chatAttachment.value);
+    if (guestToken) form.append('guest_token', guestToken);
+
     try {
-        await api.post(`/meetings/${code}/messages`, {
-            message: text,
-            ...(guestToken ? { guest_token: guestToken } : {}),
-        });
+        await api.post(`/meetings/${code}/messages`, form);
         chatDraft.value = '';
-    } catch {
-        chatError.value = 'Could not send your message. Please try again.';
+        clearAttachment();
+    } catch (error) {
+        if (isAxiosError(error) && error.response?.status === 422) {
+            chatAttachmentError.value = error.response.data?.errors?.attachment?.[0] ?? 'Could not send your message. Please try again.';
+        } else {
+            chatError.value = 'Could not send your message. Please try again.';
+        }
     } finally {
         chatSending.value = false;
     }
@@ -1039,11 +1073,48 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <span class="font-medium text-neutral-300">{{ msg.presence_id === myId ? 'You' : msg.sender_name }}</span>
                                 <span>{{ new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                             </div>
-                            <p class="text-sm text-neutral-100 break-words whitespace-pre-wrap">{{ msg.message }}</p>
+                            <p v-if="msg.message" class="text-sm text-neutral-100 break-words whitespace-pre-wrap">{{ msg.message }}</p>
+                            <a
+                                v-if="msg.attachment && msg.attachment.is_image"
+                                :href="attachmentUrl(msg.attachment)"
+                                target="_blank"
+                                class="block mt-1"
+                            >
+                                <img :src="attachmentUrl(msg.attachment)" class="max-w-full max-h-40 rounded border border-neutral-800" />
+                            </a>
+                            <a
+                                v-else-if="msg.attachment"
+                                :href="attachmentUrl(msg.attachment)"
+                                target="_blank"
+                                class="mt-1 flex items-center gap-1.5 text-xs bg-neutral-900 border border-neutral-800 rounded-md px-2 py-1.5 hover:bg-neutral-800 w-fit"
+                            >
+                                📎 {{ msg.attachment.name }}
+                                <span class="text-neutral-500">({{ formatFileSize(msg.attachment.size) }})</span>
+                            </a>
                         </div>
                     </div>
                     <p v-if="chatError" class="text-xs text-red-400 px-3">{{ chatError }}</p>
+                    <p v-if="chatAttachmentError" class="text-xs text-red-400 px-3">{{ chatAttachmentError }}</p>
+                    <div v-if="chatAttachment" class="px-3 pt-2 flex items-center gap-2 text-xs text-neutral-400">
+                        📎 {{ chatAttachment.name }}
+                        <button type="button" class="text-neutral-500 hover:text-neutral-300" @click="clearAttachment">✕</button>
+                    </div>
                     <form class="p-3 border-t border-neutral-800 flex items-center gap-2" @submit.prevent="sendChatMessage">
+                        <input
+                            ref="chatAttachmentInput"
+                            type="file"
+                            class="hidden"
+                            accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip"
+                            @change="onAttachmentSelected"
+                        />
+                        <button
+                            type="button"
+                            class="shrink-0 rounded-md border border-neutral-800 px-2 py-2 text-sm hover:bg-neutral-900"
+                            title="Attach a file"
+                            @click="chatAttachmentInput?.click()"
+                        >
+                            📎
+                        </button>
                         <input
                             v-model="chatDraft"
                             type="text"
@@ -1053,7 +1124,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         />
                         <button
                             type="submit"
-                            :disabled="chatSending || !chatDraft.trim()"
+                            :disabled="chatSending || (!chatDraft.trim() && !chatAttachment)"
                             class="rounded-md bg-neutral-100 text-neutral-950 text-sm font-medium px-3 py-2 disabled:opacity-50"
                         >
                             Send

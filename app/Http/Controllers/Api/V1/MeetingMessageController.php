@@ -10,6 +10,8 @@ use App\Models\MeetingMessage;
 use App\Models\MeetingParticipant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MeetingMessageController extends Controller
 {
@@ -29,14 +31,7 @@ class MeetingMessageController extends Controller
             ->with(['user', 'participant'])
             ->orderBy('created_at')
             ->get()
-            ->map(fn (MeetingMessage $message) => [
-                'id' => $message->id,
-                'message' => $message->message,
-                'sender_name' => $message->senderName(),
-                'sender_role' => $message->participant?->role,
-                'presence_id' => $message->participant?->presenceId(),
-                'created_at' => $message->created_at->toIso8601String(),
-            ]);
+            ->map(fn (MeetingMessage $message) => $message->toChatPayload($code));
 
         return response()->json(['data' => $messages]);
     }
@@ -55,26 +50,47 @@ class MeetingMessageController extends Controller
             return response()->json(['message' => 'You are not a participant of this meeting.'], 403);
         }
 
-        $message = MeetingMessage::create([
+        $attributes = [
             'meeting_id' => $meeting->id,
             'user_id' => $request->user()?->id,
             'meeting_participant_id' => $participant->id,
             'message' => $request->validated('message'),
             'created_at' => now(),
-        ]);
+        ];
 
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $attributes['attachment_path'] = $file->store("chat-attachments/{$meeting->id}", 'local');
+            $attributes['attachment_original_name'] = $file->getClientOriginalName();
+            $attributes['attachment_mime_type'] = $file->getMimeType();
+            $attributes['attachment_size'] = $file->getSize();
+        }
+
+        $message = MeetingMessage::create($attributes);
         $message->setRelation('participant', $participant)->setRelation('user', $request->user());
 
         broadcast(new ChatMessageEvent($meeting, $message));
 
-        return response()->json(['data' => [
-            'id' => $message->id,
-            'message' => $message->message,
-            'sender_name' => $message->senderName(),
-            'sender_role' => $participant->role,
-            'presence_id' => $participant->presenceId(),
-            'created_at' => $message->created_at->toIso8601String(),
-        ]], 201);
+        return response()->json(['data' => $message->toChatPayload($code)], 201);
+    }
+
+    public function attachment(Request $request, string $code, MeetingMessage $message): StreamedResponse|JsonResponse
+    {
+        $meeting = Meeting::where('meeting_code', $code)->first();
+
+        if (! $meeting || $message->meeting_id !== $meeting->id || ! $message->hasAttachment()) {
+            abort(404);
+        }
+
+        if (! $this->resolveActiveParticipant($request, $meeting, $request->query('guest_token'))) {
+            return response()->json(['message' => 'You are not a participant of this meeting.'], 403);
+        }
+
+        return Storage::disk('local')->response(
+            $message->attachment_path,
+            $message->attachment_original_name,
+            ['X-Content-Type-Options' => 'nosniff'],
+        );
     }
 
     private function resolveActiveParticipant(Request $request, Meeting $meeting, ?string $guestToken): ?MeetingParticipant

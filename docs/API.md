@@ -184,14 +184,20 @@ Public (no `auth:sanctum` required, so guests can participate), but every endpoi
 ### `GET /api/v1/meetings/{code}/messages`
 
 Rate-limited (60/min). Returns the full message history in chronological order.
-Response: `200 {"data": [{"id", "message", "sender_name", "sender_role", "presence_id", "created_at"}]}`, or `403` if the caller isn't currently an active participant, or `404` for an unknown code.
+Response: `200 {"data": [{"id", "message", "sender_name", "sender_role", "presence_id", "created_at", "attachment"}]}`, or `403` if the caller isn't currently an active participant, or `404` for an unknown code. `attachment` is `null` on a text-only message, otherwise `{"url", "name", "mime_type", "size", "is_image"}` — `url` already points at the download endpoint below.
 
 ### `POST /api/v1/meetings/{code}/messages`
 
-Rate-limited (30/min). Sends a message; `message` is required, trimmed server-side, and capped at 2000 characters (whitespace-only is rejected as empty).
+Rate-limited (30/min). `multipart/form-data`. `message` is optional, trimmed server-side, capped at 2000 characters; `attachment` is an optional file, capped at 5MB, restricted to `jpg,jpeg,png,gif,webp,pdf,txt,csv,doc,docx,xls,xlsx,zip`. At least one of `message`/`attachment` must be present — sending neither is rejected as if the message were empty. The uploaded file's MIME type and size are detected server-side, never taken from client-supplied values; it's stored under a randomly-generated filename outside the public webroot (see [SECURITY.md](SECURITY.md#file-handling)) — the original filename is kept only as display metadata.
 
-Request: `{"message", "guest_token"?}`
-Response: `201 {"data": {...message}}` (same shape as a list entry), `422` for an empty/oversized message, `403` if the caller isn't currently an active participant, or `404` for an unknown code.
+Request: `{"message"?, "attachment"?, "guest_token"?}`
+Response: `201 {"data": {...message}}` (same shape as a list entry, including `attachment`), `422` for an empty message with no attachment, an oversized/disallowed attachment, or an oversized message, `403` if the caller isn't currently an active participant, or `404` for an unknown code.
+
+### `GET /api/v1/meetings/{code}/messages/{message}/attachment`
+
+Rate-limited (60/min). Streams the attachment's file bytes. Re-validates the caller is still a currently-active participant of that specific meeting on every request (not a one-time signed URL — see [SECURITY.md](SECURITY.md#file-handling)), so access is correctly revoked in real time if the caller is later removed from the meeting. Guests pass `?guest_token=...` (a plain `<img src>`/`<a href>` can't set the `X-Guest-Token` header the rest of the guest-auth surface uses).
+
+Response: the raw file with its detected `Content-Type` and `X-Content-Type-Options: nosniff`, `403` if the caller isn't currently an active participant, or `404` if the message doesn't exist, belongs to a different meeting, or has no attachment.
 
 ## WebRTC Signaling
 

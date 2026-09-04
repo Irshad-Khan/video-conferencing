@@ -125,13 +125,22 @@ export interface HandRaisePayload {
     raised: boolean;
 }
 
+export interface ChatAttachment {
+    url: string;
+    name: string;
+    mime_type: string;
+    size: number;
+    is_image: boolean;
+}
+
 export interface ChatMessage {
     id: number;
-    message: string;
+    message: string | null;
     sender_name: string;
     sender_role: ParticipantRole | null;
     presence_id: string | null;
     created_at: string;
+    attachment: ChatAttachment | null;
 }
 
 export interface WaitingParticipant {

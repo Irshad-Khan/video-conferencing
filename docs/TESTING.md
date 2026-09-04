@@ -27,7 +27,7 @@ Which automated test file(s) cover which roadmap phase's feature area — built 
 | Permissions / authorization boundaries | 3, 7, 11, 15, 16 | `Meetings/{MeetingAuthorizationTest,MeetingControlsAuthorizationTest,MeetingWaitingRoomTest}.php`, `Admin/AdminAuthorizationTest.php` | `Policies/MeetingPolicyTest.php` |
 | Reverb channel auth (private-meeting/waiting-room) | 5, 11 | `Meetings/MeetingBroadcastAuthTest.php` | — |
 | Meeting controls (mute/remove/lock/guests/waiting-room toggle) | 7, 11 | `Meetings/MeetingControlsTest.php` | — |
-| Chat | 9 | `Meetings/MeetingChatTest.php` | `Models/MeetingMessageTest.php` (`senderName()`) |
+| Chat (incl. file/image attachments) | 9, 23 | `Meetings/MeetingChatTest.php` | `Models/MeetingMessageTest.php` (`senderName()`) |
 | Participants / meeting history / duration tracking | 13 | `Meetings/MeetingHistoryTest.php` | `Models/MeetingParticipantTest.php` (`presenceId()`) |
 | Admin panel (users, meetings, stats) | 15 | `Admin/{AdminUsersTest,AdminMeetingsTest,AdminStatsTest,AdminAuthorizationTest}.php` | — |
 | Rate limiting | 16 | `RateLimitingTest.php`, `Auth/RegistrationTest.php`, `Auth/LoginTest.php` | — |
@@ -435,3 +435,19 @@ Verified 2026-09-04, mcsirshad95@gmail.com.
 | TC-P22-06 | A co-host cannot appoint another co-host | `POST .../promote` as a co-host (not the actual host) returns `403` — `manageCoHosts` deliberately did not widen the way `manageSettings`/`manageParticipants` did | PASS (automated, and live: participant successfully muted a third party post-promotion but was blocked from promoting anyone themselves) |
 
 Driven over CDP with two independent Chrome profiles, both **authenticated** (host + a signed-in participant) — a co-host must be a real registered user, since guests are rejected. A genuine regression was caught and fixed mid-pass, not just a test-script mistake: widening `MeetingPolicy::manageSettings`/`manageParticipants` to check for a co-host DB row broke `tests/Unit/Policies/MeetingPolicyTest.php`'s existing "non-host fails every ability" case, since that test is deliberately framework-free (no database connection resolver bootstrapped at all) and the new co-host lookup needs one for any *non*-host caller. Fixed by trimming that Unit test to the abilities that still resolve without ever touching the database (the host-passes branch stays fully covered, since it short-circuits before the query), and pointing to the Feature-test coverage that now exercises the co-host branch with a real database instead.
+
+## Phase 23 Verification Checklist (Chat File/Image Attachment)
+
+Verified 2026-09-04, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P23-00 | Automated suite | `php artisan test` passes | PASS (165/165 tests, 562 assertions — adds 9 cases to `Meetings/MeetingChatTest.php`) |
+| TC-P23-01 | Frontend build | `npm run build` passes | PASS |
+| TC-P23-02 | Sending an image attachment | Attaching a real PNG via the native file picker (`input[type=file]`, driven via a new `DOM.setFileInputFiles` CDP extension since a headless browser has no OS file-picker dialog to simulate a click through) and sending shows the filename in a pre-send preview chip | PASS |
+| TC-P23-03 | Recipient renders the image inline | The other participant's chat pane shows a real `<img>` for the message, not a download chip | PASS |
+| TC-P23-04 | Recipient can actually fetch the bytes | The recipient's own session fetches the `<img>`'s `src` and gets back `200`, `image/png`, and a non-zero-byte blob — proving the download endpoint's participant-gating actually authorizes them, not just that a URL string is present | PASS |
+| TC-P23-05 | Non-image attachment renders as a download chip | A guest attaching and sending a PDF renders on the host's side as a 📎 filename/size chip, with no `<img>` inside it | PASS |
+| TC-P23-06 | Cross-participant download of another's attachment | The host can fetch the guest-uploaded PDF too (`200`) — both are still active participants of the same meeting | PASS |
+
+Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). A real backend bug was found and fixed mid-pass (not just a test-script issue): the initial run failed at TC-P23-03 even though the database correctly showed the attachment fields populated after upload — `ChatMessageEvent::broadcastWith()` had its own array literal that had never been updated when attachment support was added to `MeetingMessageController`, so the HTTP response included the attachment but the real-time broadcast that `Room.vue` actually renders from did not. Fixed by extracting `MeetingMessage::toChatPayload()` as the single shared serialization method for both. See [WEBRTC.md](WEBRTC.md#chat-signaling). A second issue was in the verification script itself, not the app: it never opened the guest's own Chat panel before checking for `aside img`, so the check would have failed regardless of the backend — fixed by opening Chat on both profiles before sending.
