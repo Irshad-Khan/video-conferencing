@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { isAxiosError } from 'axios';
 import api from '../lib/api';
@@ -70,6 +70,186 @@ const activeSpeakerId = ref('');
 const pinnedId = ref(''); // local-only viewer preference, not synced to anyone else
 const spotlightedId = ref(''); // host-set, broadcast to and forced for every participant
 
+// Theme: local-only per-device preference (localStorage), default light — the video
+// tiles themselves always stay dark regardless (standard video-call convention), only
+// the surrounding chrome (panels, bars, buttons) switches.
+const roomTheme = ref<'light' | 'dark'>(localStorage.getItem('room_theme') === 'dark' ? 'dark' : 'light');
+
+function toggleRoomTheme(): void {
+    roomTheme.value = roomTheme.value === 'light' ? 'dark' : 'light';
+    localStorage.setItem('room_theme', roomTheme.value);
+}
+
+// Live clock + call duration, shown in the room's top bar for every participant.
+const now = ref(new Date());
+const callStartedAt = ref<number | null>(null);
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+const callDuration = computed(() => {
+    if (!callStartedAt.value) return '00:00';
+    const totalSeconds = Math.max(0, Math.floor((now.value.getTime() - callStartedAt.value) / 1000));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+});
+
+const currentDateTime = computed(() =>
+    now.value.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+);
+
+// Personal notes: local-only scratchpad per meeting, never sent to the server or other
+// participants — just a convenience saved in this browser via localStorage.
+const notesOpen = ref(false);
+const notesKey = `meeting_notes_${code}`;
+const notesText = ref(localStorage.getItem(notesKey) ?? '');
+watch(notesText, (value) => {
+    if (value) localStorage.setItem(notesKey, value);
+    else localStorage.removeItem(notesKey);
+});
+
+// Client-side call recording (see docs/RECORDING.md): composites every visible video
+// tile onto a canvas and mixes every participant's audio via Web Audio, records that
+// with MediaRecorder, and saves the result straight to this device — nothing is
+// uploaded or stored server-side.
+const recordingSupported = typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function';
+const recording = ref(false);
+const recordingSeconds = ref(0);
+const recordingError = ref('');
+const remoteRecording = ref<{ active: boolean; name: string }>({ active: false, name: '' });
+const videoEls: Record<string, HTMLVideoElement> = {};
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+let recordingCanvas: HTMLCanvasElement | null = null;
+let recordingRAF: number | null = null;
+let recordingTimer: ReturnType<typeof setInterval> | null = null;
+let recordingDestination: MediaStreamAudioDestinationNode | null = null;
+const recordingConnectedAudio = new Set<string>();
+
+function formatRecordingTime(totalSeconds: number): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${pad(minutes)}:${pad(seconds)}`;
+}
+
+function drawRecordingFrame(): void {
+    if (!recordingCanvas) return;
+    const ctx = recordingCanvas.getContext('2d');
+    if (ctx) {
+        const tiles = Object.values(videoEls).filter((video) => video.readyState >= 2 && video.videoWidth > 0);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+        if (tiles.length) {
+            const cols = Math.ceil(Math.sqrt(tiles.length));
+            const rows = Math.ceil(tiles.length / cols);
+            const cellW = recordingCanvas.width / cols;
+            const cellH = recordingCanvas.height / rows;
+            tiles.forEach((video, i) => {
+                const x = (i % cols) * cellW;
+                const y = Math.floor(i / cols) * cellH;
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const cellRatio = cellW / cellH;
+                let sx = 0;
+                let sy = 0;
+                let sw = video.videoWidth;
+                let sh = video.videoHeight;
+                if (videoRatio > cellRatio) {
+                    sw = sh * cellRatio;
+                    sx = (video.videoWidth - sw) / 2;
+                } else {
+                    sh = sw / cellRatio;
+                    sy = (video.videoHeight - sh) / 2;
+                }
+                ctx.drawImage(video, sx, sy, sw, sh, x, y, cellW, cellH);
+            });
+        }
+    }
+    recordingRAF = requestAnimationFrame(drawRecordingFrame);
+}
+
+function connectRecordingAudio(id: string, stream: MediaStream): void {
+    if (!recording.value || !audioContext || !recordingDestination || recordingConnectedAudio.has(id)) return;
+    audioContext.createMediaStreamSource(stream).connect(recordingDestination);
+    recordingConnectedAudio.add(id);
+}
+
+async function startRecording(): Promise<void> {
+    if (recording.value || !recordingSupported) return;
+    recordingError.value = '';
+
+    try {
+        audioContext ??= new AudioContext();
+        recordingDestination = audioContext.createMediaStreamDestination();
+        recordingConnectedAudio.clear();
+        recording.value = true; // set before connecting audio — connectRecordingAudio() guards on this being true
+
+        if (localStream) connectRecordingAudio('__local__', localStream);
+        Object.entries(peers).forEach(([id, peer]) => {
+            if (peer.stream) connectRecordingAudio(id, peer.stream);
+        });
+
+        recordingCanvas = document.createElement('canvas');
+        recordingCanvas.width = 1280;
+        recordingCanvas.height = 720;
+        drawRecordingFrame();
+
+        const canvasStream = recordingCanvas.captureStream(15);
+        const combined = new MediaStream([...canvasStream.getVideoTracks(), ...recordingDestination.stream.getAudioTracks()]);
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(combined, { mimeType });
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) recordedChunks.push(event.data);
+        };
+        mediaRecorder.onstop = saveRecording;
+        mediaRecorder.start();
+
+        recordingSeconds.value = 0;
+        recordingTimer = setInterval(() => {
+            recordingSeconds.value += 1;
+        }, 1000);
+        channel?.whisper('recording-state', { active: true, name: myName });
+    } catch {
+        recordingError.value = 'Could not start recording in this browser.';
+        stopRecordingCleanup();
+    }
+}
+
+function stopRecording(): void {
+    if (!recording.value) return;
+    mediaRecorder?.stop();
+    channel?.whisper('recording-state', { active: false, name: myName });
+    stopRecordingCleanup();
+}
+
+function stopRecordingCleanup(): void {
+    recording.value = false;
+    if (recordingRAF) cancelAnimationFrame(recordingRAF);
+    recordingRAF = null;
+    if (recordingTimer) clearInterval(recordingTimer);
+    recordingTimer = null;
+    recordingCanvas = null;
+    recordingDestination = null;
+    recordingConnectedAudio.clear();
+}
+
+function saveRecording(): void {
+    if (!recordedChunks.length) return;
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    recordedChunks = [];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meeting-${code}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '👏', '🎉'];
 
 interface FloatingReaction {
@@ -131,6 +311,7 @@ function ensurePeer(id: string, name: string, participantId: number | null = nul
     pc.ontrack = (event) => {
         peers[id].stream = event.streams[0] ?? null;
         attachAnalyser(id, peers[id].stream);
+        if (peers[id].stream) connectRecordingAudio(id, peers[id].stream as MediaStream);
     };
 
     pc.onconnectionstatechange = () => {
@@ -161,6 +342,8 @@ function teardownPeer(id: string): void {
     delete connections[id];
     delete peers[id];
     delete analysers[id];
+    delete videoEls[id];
+    recordingConnectedAudio.delete(id);
 }
 
 /**
@@ -209,6 +392,9 @@ function setLocalVideoEl(el: Element | null): void {
     localVideo.value = el as HTMLVideoElement | null;
     if (localVideo.value) {
         localVideo.value.srcObject = screenStream ?? localStream;
+        videoEls.__local__ = localVideo.value;
+    } else {
+        delete videoEls.__local__;
     }
 }
 
@@ -253,6 +439,11 @@ function attachSignalingListeners(): void {
                 handRaised: false,
             };
             void createOfferTo(payload.id, payload.name);
+            // A whisper has no history — a participant joining after recording already
+            // started would never see the consent banner otherwise, so re-announce it.
+            if (recording.value) {
+                channel?.whisper('recording-state', { active: true, name: myName });
+            }
         })
         .listenForWhisper('participant.bye', (payload: { id: string }) => {
             teardownPeer(payload.id);
@@ -296,6 +487,9 @@ function attachSignalingListeners(): void {
             if (peers[payload.from]) {
                 peers[payload.from].handRaised = payload.raised;
             }
+        })
+        .listenForWhisper('recording-state', (payload: { active: boolean; name: string }) => {
+            remoteRecording.value = payload.active ? { active: true, name: payload.name } : { active: false, name: '' };
         })
         .listen('.host.control', (payload: HostControlPayload) => {
             handleHostControl(payload);
@@ -418,6 +612,8 @@ function sendReaction(emoji: string): void {
 }
 
 function teardown(): void {
+    if (recording.value) stopRecording();
+
     Object.keys(connections).forEach(teardownPeer);
     localStream?.getTracks().forEach((track) => track.stop());
     screenStream?.getTracks().forEach((track) => track.stop());
@@ -426,6 +622,10 @@ function teardown(): void {
     if (speakerDetectionTimer) {
         clearInterval(speakerDetectionTimer);
         speakerDetectionTimer = null;
+    }
+    if (clockTimer) {
+        clearInterval(clockTimer);
+        clockTimer = null;
     }
     delete analysers[myId];
     void audioContext?.close();
@@ -469,6 +669,11 @@ onMounted(async () => {
     }
     attachAnalyser(myId, localStream);
     speakerDetectionTimer = setInterval(detectActiveSpeaker, 700);
+
+    callStartedAt.value = Date.now();
+    clockTimer = setInterval(() => {
+        now.value = new Date();
+    }, 1000);
 
     const guestToken = sessionStorage.getItem(guestTokenKey);
     if (guestToken) {
@@ -878,27 +1083,100 @@ function setPeerVideoEl(id: string, el: Element | null): void {
     const video = el as HTMLVideoElement | null;
     if (video && peers[id]?.stream) {
         video.srcObject = peers[id].stream;
+        videoEls[id] = video;
+    } else if (!video) {
+        delete videoEls[id];
     }
 }
 </script>
 
+
 <template>
-    <div class="h-screen bg-slate-950 text-slate-100 flex flex-col overflow-hidden">
+    <div class="h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col overflow-hidden" :class="{ dark: roomTheme === 'dark' }">
         <div v-if="error" class="flex-1 flex items-center justify-center px-6">
-            <p class="text-sm text-red-400">{{ error }}</p>
+            <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
         </div>
 
         <template v-else>
-            <p v-if="notice" class="text-xs text-center bg-amber-950/50 text-amber-300 py-1.5">{{ notice }}</p>
-            <p v-if="hostActionError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ hostActionError }}</p>
-            <p v-if="screenShareError" class="text-xs text-center bg-red-950/50 text-red-300 py-1.5">{{ screenShareError }}</p>
+            <div class="flex items-center justify-between gap-3 px-3 sm:px-4 py-2 border-b border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/40 text-xs shrink-0">
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <p class="font-medium text-slate-700 dark:text-slate-300 truncate">{{ joinData?.meeting.title ?? 'Meeting' }}</p>
+                </div>
 
-            <div v-if="canManage" class="flex flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 border-b border-slate-800/80 bg-slate-900/40 text-xs shrink-0">
+                <div class="hidden sm:flex items-center gap-3 text-slate-500 dark:text-slate-400 shrink-0">
+                    <span>{{ currentDateTime }}</span>
+                    <span class="tabular-nums">⏱ {{ callDuration }}</span>
+                </div>
+
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button
+                        type="button"
+                        v-if="recordingSupported"
+                        class="flex items-center gap-1.5 rounded-full px-2.5 py-1 border border-slate-300 dark:border-slate-800 transition-colors"
+                        :class="recording ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/50 dark:border-red-800 dark:text-red-300' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                        @click="recording ? stopRecording() : startRecording()"
+                    >
+                        <span class="h-2 w-2 rounded-full bg-red-500" :class="recording ? 'animate-pulse' : ''"></span>
+                        {{ recording ? formatRecordingTime(recordingSeconds) : 'Record' }}
+                    </button>
+                    <button
+                        type="button"
+                        class="relative rounded-full p-1.5 border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        :class="notesText ? 'text-amber-600 dark:text-amber-400' : ''"
+                        title="Sticky notes (saved on this device only)"
+                        @click="notesOpen = !notesOpen"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M9 3v4h6V3"/><path d="M9 13h6M9 17h4"/></svg>
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-full p-1.5 border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Switch theme"
+                        @click="toggleRoomTheme"
+                    >
+                        <svg v-if="roomTheme === 'light'" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <p v-if="recording" class="text-xs text-center bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 py-1.5">
+                🔴 You're recording this meeting — it will save to your device when you stop.
+            </p>
+            <p v-else-if="remoteRecording.active" class="text-xs text-center bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 py-1.5">
+                🔴 {{ remoteRecording.name }} is recording this meeting.
+            </p>
+            <p v-if="recordingError" class="text-xs text-center bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 py-1.5">{{ recordingError }}</p>
+            <p v-if="notice" class="text-xs text-center bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 py-1.5">{{ notice }}</p>
+            <p v-if="hostActionError" class="text-xs text-center bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 py-1.5">{{ hostActionError }}</p>
+            <p v-if="screenShareError" class="text-xs text-center bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 py-1.5">{{ screenShareError }}</p>
+
+            <div
+                v-if="notesOpen"
+                class="fixed top-14 right-3 z-40 w-64 rounded-lg bg-amber-100 dark:bg-amber-200 border border-amber-300 shadow-lg p-3 rotate-[0.3deg]"
+            >
+                <div class="flex items-center justify-between mb-1.5">
+                    <p class="text-xs font-medium text-amber-900 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M9 3v4h6V3"/><path d="M9 13h6M9 17h4"/></svg>
+                        Sticky notes
+                    </p>
+                    <button type="button" class="text-amber-700 hover:text-amber-900 text-xs" @click="notesOpen = false">Close</button>
+                </div>
+                <textarea
+                    v-model="notesText"
+                    rows="8"
+                    placeholder="Jot anything down — only visible to you, saved on this device."
+                    class="w-full resize-none rounded-md bg-amber-50 border border-amber-200 px-2.5 py-2 text-sm text-amber-950 placeholder:text-amber-700/60 focus:outline-none focus:border-amber-400"
+                ></textarea>
+            </div>
+
+            <div v-if="canManage" class="flex flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800/80 bg-slate-100/70 dark:bg-slate-900/40 text-xs shrink-0">
                 <button
                     type="button"
                     :disabled="hostActionBusy"
-                    class="rounded-full px-3 py-1 border border-slate-800 disabled:opacity-50"
-                    :class="meetingLocked ? 'bg-red-900/50 border-red-800' : 'bg-slate-900'"
+                    class="rounded-full px-3 py-1 border border-slate-300 dark:border-slate-800 disabled:opacity-50"
+                    :class="meetingLocked ? 'bg-red-50 border-red-300 dark:bg-red-900/50 dark:border-red-800' : 'bg-white dark:bg-slate-900'"
                     @click="toggleLock"
                 >
                     {{ meetingLocked ? 'Unlock meeting' : 'Lock meeting' }}
@@ -906,8 +1184,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 <button
                     type="button"
                     :disabled="hostActionBusy"
-                    class="rounded-full px-3 py-1 border border-slate-800 disabled:opacity-50"
-                    :class="guestsAllowed ? 'bg-slate-900' : 'bg-red-900/50 border-red-800'"
+                    class="rounded-full px-3 py-1 border border-slate-300 dark:border-slate-800 disabled:opacity-50"
+                    :class="guestsAllowed ? 'bg-white dark:bg-slate-900' : 'bg-red-50 border-red-300 dark:bg-red-900/50 dark:border-red-800'"
                     @click="toggleGuests"
                 >
                     {{ guestsAllowed ? 'Disallow guests' : 'Allow guests' }}
@@ -915,8 +1193,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 <button
                     type="button"
                     :disabled="hostActionBusy"
-                    class="rounded-full px-3 py-1 border border-slate-800 disabled:opacity-50"
-                    :class="waitingRoomEnabled ? 'bg-red-900/50 border-red-800' : 'bg-slate-900'"
+                    class="rounded-full px-3 py-1 border border-slate-300 dark:border-slate-800 disabled:opacity-50"
+                    :class="waitingRoomEnabled ? 'bg-red-50 border-red-300 dark:bg-red-900/50 dark:border-red-800' : 'bg-white dark:bg-slate-900'"
                     @click="toggleWaitingRoom"
                 >
                     {{ waitingRoomEnabled ? 'Disable waiting room' : 'Enable waiting room' }}
@@ -1061,32 +1339,32 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </div>
                 </div>
 
-                <aside v-if="chatOpen" class="w-72 shrink-0 border-l border-slate-800 bg-slate-900/30 flex flex-col">
-                    <div class="px-3 py-2 border-b border-slate-800 text-sm font-medium flex items-center justify-between">
+                <aside v-if="chatOpen" class="w-72 shrink-0 border-l border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/30 flex flex-col">
+                    <div class="px-3 py-2 border-b border-slate-300 dark:border-slate-800 text-sm font-medium flex items-center justify-between">
                         Chat
-                        <button type="button" class="text-slate-400 hover:text-slate-200 text-xs" @click="toggleChat">Close</button>
+                        <button type="button" class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-xs" @click="toggleChat">Close</button>
                     </div>
                     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
                         <p v-if="!chatMessages.length" class="text-xs text-slate-500">No messages yet.</p>
                         <div v-for="msg in chatMessages" :key="msg.id">
-                            <div class="text-xs text-slate-400 flex items-center gap-1">
-                                <span class="font-medium text-slate-300">{{ msg.presence_id === myId ? 'You' : msg.sender_name }}</span>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                <span class="font-medium text-slate-600 dark:text-slate-300">{{ msg.presence_id === myId ? 'You' : msg.sender_name }}</span>
                                 <span>{{ new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                             </div>
-                            <p v-if="msg.message" class="text-sm text-slate-100 break-words whitespace-pre-wrap">{{ msg.message }}</p>
+                            <p v-if="msg.message" class="text-sm text-slate-900 dark:text-slate-100 break-words whitespace-pre-wrap">{{ msg.message }}</p>
                             <a
                                 v-if="msg.attachment && msg.attachment.is_image"
                                 :href="attachmentUrl(msg.attachment)"
                                 target="_blank"
                                 class="block mt-1"
                             >
-                                <img :src="attachmentUrl(msg.attachment)" class="max-w-full max-h-40 rounded border border-slate-800" />
+                                <img :src="attachmentUrl(msg.attachment)" class="max-w-full max-h-40 rounded border border-slate-300 dark:border-slate-800" />
                             </a>
                             <a
                                 v-else-if="msg.attachment"
                                 :href="attachmentUrl(msg.attachment)"
                                 target="_blank"
-                                class="mt-1 flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 hover:bg-slate-800 w-fit"
+                                class="mt-1 flex items-center gap-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-md px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 w-fit"
                             >
                                 📎 {{ msg.attachment.name }}
                                 <span class="text-slate-500">({{ formatFileSize(msg.attachment.size) }})</span>
@@ -1095,11 +1373,11 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </div>
                     <p v-if="chatError" class="text-xs text-red-400 px-3">{{ chatError }}</p>
                     <p v-if="chatAttachmentError" class="text-xs text-red-400 px-3">{{ chatAttachmentError }}</p>
-                    <div v-if="chatAttachment" class="px-3 pt-2 flex items-center gap-2 text-xs text-slate-400">
+                    <div v-if="chatAttachment" class="px-3 pt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                         📎 {{ chatAttachment.name }}
-                        <button type="button" class="text-slate-500 hover:text-slate-300" @click="clearAttachment">✕</button>
+                        <button type="button" class="text-slate-500 hover:text-slate-600 dark:hover:text-slate-300" @click="clearAttachment">✕</button>
                     </div>
-                    <form class="p-3 border-t border-slate-800 flex items-center gap-2" @submit.prevent="sendChatMessage">
+                    <form class="p-3 border-t border-slate-300 dark:border-slate-800 flex items-center gap-2" @submit.prevent="sendChatMessage">
                         <input
                             ref="chatAttachmentInput"
                             type="file"
@@ -1109,7 +1387,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                         />
                         <button
                             type="button"
-                            class="shrink-0 rounded-md border border-slate-800 px-2 py-2 text-sm hover:bg-slate-900"
+                            class="shrink-0 rounded-md border border-slate-300 dark:border-slate-800 px-2 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-900"
                             title="Attach a file"
                             @click="chatAttachmentInput?.click()"
                         >
@@ -1120,7 +1398,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             type="text"
                             maxlength="2000"
                             placeholder="Message everyone"
-                            class="flex-1 rounded-md bg-slate-900 border border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                            class="flex-1 rounded-md bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
                         />
                         <button
                             type="submit"
@@ -1132,15 +1410,15 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </form>
                 </aside>
 
-                <aside v-if="participantsOpen" class="w-72 shrink-0 border-l border-slate-800 bg-slate-900/30 flex flex-col">
-                    <div class="px-3 py-2 border-b border-slate-800 text-sm font-medium flex items-center justify-between">
+                <aside v-if="participantsOpen" class="w-72 shrink-0 border-l border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/30 flex flex-col">
+                    <div class="px-3 py-2 border-b border-slate-300 dark:border-slate-800 text-sm font-medium flex items-center justify-between">
                         Participants ({{ Object.keys(peers).length + 1 }})
-                        <button type="button" class="text-slate-400 hover:text-slate-200 text-xs" @click="toggleParticipants">Close</button>
+                        <button type="button" class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-xs" @click="toggleParticipants">Close</button>
                     </div>
                     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-                        <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-900">
+                        <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-900">
                             <div class="min-w-0">
-                                <p class="text-sm text-slate-100 truncate">
+                                <p class="text-sm text-slate-900 dark:text-slate-100 truncate">
                                     You
                                     <span class="text-xs text-slate-500">({{ roleLabel(myRole) }})</span>
                                     <span v-if="myHandRaised">✋</span>
@@ -1152,9 +1430,9 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                             </div>
                         </div>
 
-                        <div v-for="peer in peers" :key="peer.id" class="flex items-center justify-between gap-2 py-2 border-b border-slate-900">
+                        <div v-for="peer in peers" :key="peer.id" class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-900">
                             <div class="min-w-0">
-                                <p class="text-sm text-slate-100 truncate">
+                                <p class="text-sm text-slate-900 dark:text-slate-100 truncate">
                                     {{ peer.name }}
                                     <span class="text-xs text-slate-500">({{ roleLabel(peer.role) }})</span>
                                     <span v-if="peer.handRaised">✋</span>
@@ -1168,7 +1446,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <button
                                     type="button"
                                     class="text-xs rounded px-2 py-1"
-                                    :class="pinnedId === peer.id ? 'bg-indigo-600/30 hover:bg-indigo-600/50' : 'bg-slate-900 hover:bg-slate-800'"
+                                    :class="pinnedId === peer.id ? 'bg-indigo-600/30 hover:bg-indigo-600/50' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'"
                                     @click="togglePin(peer.id)"
                                 >
                                     {{ pinnedId === peer.id ? 'Unpin' : 'Pin' }}
@@ -1178,7 +1456,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                     type="button"
                                     :disabled="hostActionBusy"
                                     class="text-xs rounded px-2 py-1 disabled:opacity-50"
-                                    :class="peer.role === 'co_host' ? 'bg-purple-900/60 hover:bg-purple-900/80' : 'bg-slate-900 hover:bg-slate-800'"
+                                    :class="peer.role === 'co_host' ? 'bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-900/80' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'"
                                     @click="peer.role === 'co_host' ? demoteFromCoHost(peer) : promoteToCoHost(peer)"
                                 >
                                     {{ peer.role === 'co_host' ? 'Remove co-host' : 'Make co-host' }}
@@ -1187,7 +1465,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                     <button
                                         type="button"
                                         :disabled="hostActionBusy"
-                                        class="text-xs bg-slate-900 hover:bg-slate-800 rounded px-2 py-1 disabled:opacity-50"
+                                        class="text-xs bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded px-2 py-1 disabled:opacity-50"
                                         @click="muteParticipant(peer)"
                                     >
                                         Mute
@@ -1196,7 +1474,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                         type="button"
                                         :disabled="hostActionBusy"
                                         class="text-xs rounded px-2 py-1 disabled:opacity-50"
-                                        :class="spotlightedId === peer.id ? 'bg-amber-900/60 hover:bg-amber-900/80' : 'bg-slate-900 hover:bg-slate-800'"
+                                        :class="spotlightedId === peer.id ? 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/60 dark:hover:bg-amber-900/80' : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800'"
                                         @click="spotlightedId === peer.id ? clearSpotlight() : spotlightParticipant(peer)"
                                     >
                                         {{ spotlightedId === peer.id ? 'Unspotlight' : 'Spotlight' }}
@@ -1204,7 +1482,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                     <button
                                         type="button"
                                         :disabled="hostActionBusy"
-                                        class="text-xs bg-slate-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                        class="text-xs bg-white dark:bg-slate-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
                                         @click="removeParticipant(peer)"
                                     >
                                         Remove
@@ -1215,19 +1493,19 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </div>
                 </aside>
 
-                <aside v-if="canManage && waitingRoomOpen" class="w-72 shrink-0 border-l border-slate-800 bg-slate-900/30 flex flex-col">
-                    <div class="px-3 py-2 border-b border-slate-800 text-sm font-medium flex items-center justify-between">
+                <aside v-if="canManage && waitingRoomOpen" class="w-72 shrink-0 border-l border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/30 flex flex-col">
+                    <div class="px-3 py-2 border-b border-slate-300 dark:border-slate-800 text-sm font-medium flex items-center justify-between">
                         Waiting Room ({{ waitingParticipants.length }})
-                        <button type="button" class="text-slate-400 hover:text-slate-200 text-xs" @click="toggleWaitingRoomPanel">Close</button>
+                        <button type="button" class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-xs" @click="toggleWaitingRoomPanel">Close</button>
                     </div>
                     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1">
                         <p v-if="!waitingParticipants.length" class="text-xs text-slate-500">No one is waiting.</p>
                         <div
                             v-for="participant in waitingParticipants"
                             :key="participant.id"
-                            class="flex items-center justify-between gap-2 py-2 border-b border-slate-900"
+                            class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 dark:border-slate-900"
                         >
-                            <p class="text-sm text-slate-100 truncate">{{ participant.name }}</p>
+                            <p class="text-sm text-slate-900 dark:text-slate-100 truncate">{{ participant.name }}</p>
                             <div class="flex items-center gap-1 shrink-0">
                                 <button
                                     type="button"
@@ -1240,7 +1518,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                                 <button
                                     type="button"
                                     :disabled="waitingActionBusy"
-                                    class="text-xs bg-slate-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
+                                    class="text-xs bg-white dark:bg-slate-900 hover:bg-red-900/80 rounded px-2 py-1 disabled:opacity-50"
                                     @click="rejectParticipant(participant)"
                                 >
                                     Reject
@@ -1251,19 +1529,19 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 </aside>
             </div>
 
-            <div class="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 border-t border-slate-800/80 bg-slate-900/40 shrink-0">
+            <div class="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 border-t border-slate-200 dark:border-slate-800/80 bg-slate-100/70 dark:bg-slate-900/40 shrink-0">
                 <button
                     type="button"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="micOn ? 'bg-slate-900' : 'bg-red-900/50 border-red-800'"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="micOn ? 'bg-white dark:bg-slate-900' : 'bg-red-50 border-red-300 dark:bg-red-900/50 dark:border-red-800'"
                     @click="toggleMic"
                 >
                     {{ micOn ? 'Mute' : 'Unmute' }}
                 </button>
                 <button
                     type="button"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="cameraOn ? 'bg-slate-900' : 'bg-red-900/50 border-red-800'"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="cameraOn ? 'bg-white dark:bg-slate-900' : 'bg-red-50 border-red-300 dark:bg-red-900/50 dark:border-red-800'"
                     @click="toggleCamera"
                 >
                     {{ cameraOn ? 'Stop camera' : 'Start camera' }}
@@ -1272,16 +1550,16 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     v-if="screenShareSupported"
                     type="button"
                     :disabled="screenShareBusy"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors disabled:opacity-50"
-                    :class="screenSharing ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' : 'bg-slate-900'"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors disabled:opacity-50"
+                    :class="screenSharing ? 'bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'"
                     @click="screenSharing ? stopScreenShare() : startScreenShare()"
                 >
                     {{ screenSharing ? 'Stop sharing' : 'Share screen' }}
                 </button>
                 <button
                     type="button"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="participantsOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' : 'bg-slate-900'"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="participantsOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'"
                     @click="toggleParticipants"
                 >
                     Participants ({{ Object.keys(peers).length + 1 }})
@@ -1289,8 +1567,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 <button
                     v-if="canManage"
                     type="button"
-                    class="relative rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="waitingRoomOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' : 'bg-slate-900'"
+                    class="relative rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="waitingRoomOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'"
                     @click="toggleWaitingRoomPanel"
                 >
                     Waiting Room
@@ -1303,15 +1581,15 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 </button>
                 <button
                     type="button"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="myHandRaised ? 'bg-amber-900/50 border-amber-800' : 'bg-slate-900'"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="myHandRaised ? 'bg-amber-50 border-amber-300 dark:bg-amber-900/50 dark:border-amber-800' : 'bg-white dark:bg-slate-900'"
                     @click="toggleHand"
                 >
                     {{ myHandRaised ? 'Lower ✋' : 'Raise ✋' }}
                 </button>
                 <button
                     type="button"
-                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors bg-slate-900"
+                    class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors bg-white dark:bg-slate-900"
                     @click="toggleViewMode"
                 >
                     {{ viewMode === 'gallery' ? 'Speaker' : 'Gallery' }}
@@ -1319,7 +1597,7 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 <div class="relative">
                     <div
                         v-if="reactionPickerOpen"
-                        class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-full px-2 py-1.5"
+                        class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-full px-2 py-1.5"
                     >
                         <button
                             v-for="emoji in REACTION_EMOJIS"
@@ -1333,8 +1611,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                     </div>
                     <button
                         type="button"
-                        class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                        :class="reactionPickerOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' : 'bg-slate-900'"
+                        class="rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                        :class="reactionPickerOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'"
                         @click="reactionPickerOpen = !reactionPickerOpen"
                     >
                         React
@@ -1342,8 +1620,8 @@ function setPeerVideoEl(id: string, el: Element | null): void {
                 </div>
                 <button
                     type="button"
-                    class="relative rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-800 transition-colors"
-                    :class="chatOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300' : 'bg-slate-900'"
+                    class="relative rounded-full px-2.5 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium border border-slate-300 dark:border-slate-800 transition-colors"
+                    :class="chatOpen ? 'bg-indigo-600/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'"
                     @click="toggleChat"
                 >
                     Chat

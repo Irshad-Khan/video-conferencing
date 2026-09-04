@@ -116,6 +116,18 @@ function formatDuration(minutes: number | null): string | null {
     return `${hours}h ${mins}m`;
 }
 
+/** Actual elapsed time a past meeting ran for, from real start/end timestamps — not the planned `duration_minutes`. */
+function actualDuration(meeting: Meeting): string | null {
+    if (!meeting.started_at || !meeting.ended_at) return null;
+    const seconds = Math.round((new Date(meeting.ended_at).getTime() - new Date(meeting.started_at).getTime()) / 1000);
+    if (seconds <= 0) return null;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+    if (hours === 0) return `${minutes} min`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+}
+
 async function loadMeetings(): Promise<void> {
     loading.value = true;
     loadError.value = '';
@@ -574,7 +586,10 @@ function formatDate(iso: string | null): string {
             </template>
 
             <section class="space-y-3">
-                <h2 class="text-sm font-medium text-slate-500 uppercase tracking-wide">Past</h2>
+                <h2 class="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wide">
+                    Past
+                    <span v-if="past.length" class="text-slate-300 normal-case font-normal">· {{ past.length }}</span>
+                </h2>
                 <div v-if="!past.length" class="flex items-center gap-3 rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                     No past meetings yet — your finished meetings will show up here.
@@ -582,13 +597,35 @@ function formatDate(iso: string | null): string {
                 <div
                     v-for="meeting in past"
                     :key="meeting.id"
-                    class="border border-slate-200 bg-slate-50/70 rounded-xl p-4 flex items-center justify-between gap-4"
+                    class="border border-slate-200 bg-white rounded-xl p-4 flex items-center gap-4 hover:shadow-sm transition-shadow"
                 >
-                    <div>
-                        <p class="font-medium text-slate-900">{{ meeting.title }}</p>
-                        <p class="text-xs text-slate-500 mt-1 capitalize">
-                            {{ meeting.status }} · {{ formatDate(meeting.ended_at ?? meeting.updated_at) }}
-                        </p>
+                    <span
+                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                        :class="meeting.status === 'cancelled' ? 'bg-red-50 text-red-500' : 'bg-slate-100 text-slate-400'"
+                    >
+                        <svg v-if="meeting.status === 'cancelled'" xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2">
+                            <p class="font-medium text-slate-900 truncate">{{ meeting.title }}</p>
+                            <span
+                                class="shrink-0 text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                                :class="meeting.status === 'cancelled' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'"
+                            >
+                                {{ meeting.status }}
+                            </span>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                {{ formatDate(meeting.ended_at ?? meeting.updated_at) }}
+                            </span>
+                            <span v-if="actualDuration(meeting)" class="inline-flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                {{ actualDuration(meeting) }}
+                            </span>
+                        </div>
                     </div>
                     <button
                         type="button"

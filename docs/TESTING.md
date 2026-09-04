@@ -451,3 +451,21 @@ Verified 2026-09-04, mcsirshad95@gmail.com.
 | TC-P23-06 | Cross-participant download of another's attachment | The host can fetch the guest-uploaded PDF too (`200`) — both are still active participants of the same meeting | PASS |
 
 Driven over CDP with two independent Chrome profiles (host + a true anonymous guest). A real backend bug was found and fixed mid-pass (not just a test-script issue): the initial run failed at TC-P23-03 even though the database correctly showed the attachment fields populated after upload — `ChatMessageEvent::broadcastWith()` had its own array literal that had never been updated when attachment support was added to `MeetingMessageController`, so the HTTP response included the attachment but the real-time broadcast that `Room.vue` actually renders from did not. Fixed by extracting `MeetingMessage::toChatPayload()` as the single shared serialization method for both. See [WEBRTC.md](WEBRTC.md#chat-signaling). A second issue was in the verification script itself, not the app: it never opened the guest's own Chat panel before checking for `aside img`, so the check would have failed regardless of the backend — fixed by opening Chat on both profiles before sending.
+
+## Phase 24 Verification Checklist (Room Polish: Timer, Theme Toggle, Sticky Notes, Recording)
+
+Verified 2026-09-04, mcsirshad95@gmail.com.
+
+| ID | Test | Expected | Status |
+|----|------|----------|--------|
+| TC-P24-00 | Frontend build | `npm run build` passes | PASS |
+| TC-P24-01 | Live clock + call duration | The room's top bar shows the current date/time and a running call-duration timer that visibly increments across two readings taken ~2s apart | PASS |
+| TC-P24-02 | Theme defaults to light | A fresh device (`localStorage` cleared) loads the room with no `dark` class on the root and a near-white computed background (oklch lightness > 0.9) | PASS |
+| TC-P24-03 | Theme toggle switches to dark and back | Clicking the toggle adds the `dark` class and drops the root's computed lightness below 0.2; clicking again returns to light | PASS |
+| TC-P24-04 | Theme choice persists | The chosen theme is written to `localStorage` and survives a full page reload | PASS |
+| TC-P24-05 | Sticky notes persist locally | Typing into the notes panel saves to `localStorage` immediately and the text survives a full page reload | PASS |
+| TC-P24-06 | Recording produces a real file | Starting, running for a few seconds, and stopping a recording downloads a non-trivial `.webm` (captured via `Page.setDownloadBehavior`, not just a "download started" event) | PASS (after a fix — see below) |
+| TC-P24-07 | Recording consent banner | The recorder sees "You're recording…"; every other participant sees "`<name>` is recording this meeting" for the duration, and the banner clears on both sides once stopped | PASS |
+| TC-P24-08 | Past meeting shows real duration | A dashboard "Past" card shows the actual `started_at`→`ended_at` elapsed time (previously missing entirely), plus a status badge | PASS |
+
+Driven over CDP with two independent Chrome profiles (host + guest). A real bug was found and fixed mid-pass: the first live recording attempt produced only a 110-byte `.webm` (`MediaRecorder`'s `start` event reported `state: 'inactive'` instead of `'recording'`) because `startRecording()` connected participant audio into the recording mix before setting the `recording` flag that `connectRecordingAudio()` guards on — so no audio source was ever actually connected. Isolated first with a standalone detached-canvas `MediaRecorder` test (to rule out a headless-Chrome environment limitation, which it wasn't) and by instrumenting `window.MediaRecorder` to log construct/start/dataavailable/stop events; fixed by reordering the flag-set before the connect calls, then re-verified end-to-end with a real ~500KB downloaded file. See BUG-014 in [BUGS.md](BUGS.md).

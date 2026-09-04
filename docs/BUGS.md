@@ -354,3 +354,28 @@ Fix:
 
 Test:
 Live over CDP: host created a password-protected meeting, started it, and reached the join lobby via the dashboard's "Join meeting" button — confirmed no `#password` input exists in the DOM at all (not just visually hidden), the header reads "You're the host", and clicking "Join meeting" enters the room directly with zero password entry. `MeetingJoinTest.php`'s existing "wrong password is rejected"/"correct password allows joining" cases (which exercise a *non-host* participant) re-run unaffected, confirming the password check itself wasn't touched — only who sees the field for it.
+
+---
+
+## BUG-014
+
+Status: DONE
+
+Description:
+Caught by the session's own live-CDP verification of Phase 24's new client-side call recording, not by the user. `startRecording()` (`Room.vue`) connected the local mic and every peer's audio stream into the recording mix *before* setting `recording.value = true`, but `connectRecordingAudio()` guards its own work on that exact flag (`if (!recording.value || ...) return;`) — so on every single recording, zero audio sources ever actually reached the `MediaStreamAudioDestinationNode` feeding the recorder.
+
+Steps:
+1. Join a meeting with two participants.
+2. Click "Record" and let it run a few seconds, then click it again to stop.
+
+Expected:
+A `.webm` file downloads with a few seconds of real, non-trivial video + audio.
+
+Actual:
+A `.webm` file did download (the mechanism itself — canvas compositing, `MediaRecorder`, the blob-URL download trigger — all worked), but it was only 110 bytes: essentially an empty container. Instrumenting `MediaRecorder` directly showed its `start` event reporting `state: 'inactive'` immediately after `.start()` was called, instead of `'recording'` — the recorder was failing almost immediately rather than actually running for the several seconds it was left active.
+
+Fix:
+Moved `recording.value = true` to before the `connectRecordingAudio()` calls in `startRecording()`, so the guard they depend on is already satisfied when they run.
+
+Test:
+Live over CDP, isolating the mechanism first: a standalone detached-canvas + `MediaRecorder` test (unrelated to Room.vue's own code) confirmed `captureStream()` + `MediaRecorder` work correctly in this headless Chrome environment on their own, ruling out a headless/environment limitation and pointing at the app code instead. Instrumented `window.MediaRecorder` with a wrapper logging construct/start/dataavailable/stop events and track states, reproduced the bug (`state: 'inactive'`, 110-byte output), applied the fix, and re-ran the same instrumented flow — `start` now correctly reports `state: 'recording'` and a ~4-second two-participant recording produced a real ~460KB file. Re-ran the full end-to-end recording flow (real download via `Page.setDownloadBehavior`, both host and guest Chrome profiles) afterward and got a real ~500KB `.webm`, with the cross-participant recording-consent banner appearing and clearing correctly on both sides.

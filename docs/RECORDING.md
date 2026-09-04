@@ -1,6 +1,6 @@
 # RECORDING.md
 
-Phase 14 is design-first: this document is the deliverable. Per [ROADMAP.md](ROADMAP.md) §11 Phase 14, no recording code ships in this phase — the architecture decision is made and written down here first, and actual implementation is a later, separately-scheduled phase.
+Phase 14 was design-first: this document was the deliverable, with implementation deferred. **Recording now ships as of Phase 24** ([ROADMAP.md](ROADMAP.md) §11), following the "Decision" below almost exactly — client-side, `MediaRecorder`-based, composited from the visible video tiles — with one deliberate simplification: the recording is saved straight to the recording participant's own device and never uploaded anywhere, so the server never stores or even sees the file. That sidesteps the storage-growth and access-control considerations raised below for whichever path shipped, since there's nothing server-side to secure or clean up. The rest of this document is kept as originally written, since the comparison and reasoning it captures are still the reasoning the implementation followed.
 
 ## Goal
 
@@ -46,4 +46,4 @@ These apply to both options and are noted here so the eventual implementation ph
 
 ## Explicitly out of scope for Phase 14
 
-No code changes ship with this document: no recording toggle, no `MediaRecorder` usage, no upload endpoint, no storage schema. `docs/ROADMAP.md`'s Known Limitations entry for recording is updated to point here instead of to a TBD decision, but recording stays unimplemented until a future phase is explicitly scheduled for it.
+No code changes shipped with this document: no recording toggle, no `MediaRecorder` usage, no upload endpoint, no storage schema. `docs/ROADMAP.md`'s Known Limitations entry for recording pointed here instead of to a TBD decision, and recording stayed unimplemented until Phase 24, which is that future phase. See the note at the top of this document for what actually shipped and where it differs from the plan below.
