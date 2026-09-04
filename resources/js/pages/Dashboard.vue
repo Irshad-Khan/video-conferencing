@@ -16,6 +16,10 @@ function goToJoin(): void {
     if (code) router.push(`/meeting/${code}`);
 }
 
+function enterMeeting(meeting: Meeting): void {
+    router.push(`/meeting/${meeting.meeting_code}`);
+}
+
 const meetings = ref<Meeting[]>([]);
 const loading = ref(true);
 const loadError = ref('');
@@ -365,14 +369,23 @@ function formatDate(iso: string | null): string {
                         <p class="font-medium">{{ meeting.title }}</p>
                         <p class="text-xs text-neutral-400 mt-1">Code: {{ meeting.meeting_code }}</p>
                     </div>
-                    <button
-                        type="button"
-                        :disabled="actionMeetingId === meeting.id"
-                        class="text-sm rounded-md border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800 disabled:opacity-50"
-                        @click="runAction(meeting, 'end')"
-                    >
-                        End meeting
-                    </button>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            class="text-sm rounded-md bg-neutral-100 text-neutral-950 px-3 py-1.5"
+                            @click="enterMeeting(meeting)"
+                        >
+                            Join meeting
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="actionMeetingId === meeting.id"
+                            class="text-sm rounded-md border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800 disabled:opacity-50"
+                            @click="runAction(meeting, 'end')"
+                        >
+                            End meeting
+                        </button>
+                    </div>
                 </div>
             </section>
 

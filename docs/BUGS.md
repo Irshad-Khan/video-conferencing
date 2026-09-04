@@ -304,3 +304,28 @@ Replaced the numeric-signature throttle with a dedicated named limiter, `RateLim
 
 Test:
 `tests/Feature/Auth/RegistrationTest.php::test_repeated_registration_attempts_are_rate_limited` — fires 10 successful registrations then asserts the 11th is `429` and never reaches the database. Caught this exact bug on first run (11th request returned `201`, not `429`) before the fix.
+
+---
+
+## BUG-012
+
+Status: DONE
+
+Description:
+The host had no way to enter their own live meeting's room from `Dashboard.vue`. The "Live now" card (shown while a meeting's `status` is `live`) only ever had an "End meeting" button — clicking `/meetings/{uuid}/start` (or `New meeting` on an instant meeting) updates the meeting's status and shows it as live, but never navigates the host anywhere. There was no other UI path back into the room either: the only way in was manually retyping the meeting's own code into the small "Enter a meeting code" box at the top of the page.
+
+Steps:
+1. As a host, start a meeting (instant meeting or `Start` on a scheduled one).
+2. Observe the "Live now" card on the dashboard.
+
+Expected:
+The host has a direct way to enter the meeting room they just started.
+
+Actual:
+Only an "End meeting" button was present; the host could never see their own participant tile, other participants who joined, or use any in-room host controls unless they happened to know to manually type their own meeting code into the join-by-code box.
+
+Fix:
+Added a "Join meeting" button to the "Live now" card in `Dashboard.vue`, next to "End meeting". It navigates to the existing `/meeting/{code}` join lobby (`enterMeeting()`, same route the join-by-code box already uses) rather than straight to `/meeting/{code}/room`, since `Room.vue` requires session data (`sessionStorage`'s `join_data_{code}`) that only the join lobby's `submitJoin()` sets — the host still sees the lobby screen and clicks "Join meeting" once more, but the server already bypasses the password/waiting-room checks for the host (`$isHost` in `MeetingJoinController::join()`), so it's a fast, one-extra-click path with no backend changes needed.
+
+Test:
+Reported by the user, live over CDP: registered a host, started a meeting via a direct API call (bypassing the dashboard's own create form to isolate the bug), confirmed the "Join meeting" button is present on the "Live now" card, clicked it through to the join lobby and then into the actual room (`/meeting/{code}/room`), and confirmed the host's own name appears as a participant there. Full backend suite (149/149) re-run and unaffected, since this is a frontend-only change.
