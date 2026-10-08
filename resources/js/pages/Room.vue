@@ -297,9 +297,12 @@ function ensurePeer(id: string, name: string, participantId: number | null = nul
     const pc = new RTCPeerConnection(iceConfig());
 
     localStream?.getAudioTracks().forEach((track) => pc.addTrack(track, localStream as MediaStream));
+    if (!localStream?.getAudioTracks().length) pc.addTransceiver('audio', { direction: 'recvonly' });
     const videoTrack = currentVideoTrack();
     if (videoTrack) {
         pc.addTrack(videoTrack, (screenStream ?? localStream) as MediaStream);
+    } else {
+        pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
     pc.onicecandidate = (event) => {
@@ -391,7 +394,11 @@ function toggleViewMode(): void {
 function setLocalVideoEl(el: Element | null): void {
     localVideo.value = el as HTMLVideoElement | null;
     if (localVideo.value) {
-        localVideo.value.srcObject = screenStream ?? localStream;
+        // Vue re-invokes function refs on every re-render (the 1s clock tick re-renders
+        // this component) — reassigning an identical srcObject restarts the element
+        // and makes the video flash, so only assign when it actually changed.
+        const source = screenStream ?? localStream;
+        if (localVideo.value.srcObject !== source) localVideo.value.srcObject = source;
         videoEls.__local__ = localVideo.value;
     } else {
         delete videoEls.__local__;
@@ -657,12 +664,13 @@ onMounted(async () => {
     guestsAllowed.value = joinData.meeting.allow_guests;
     waitingRoomEnabled.value = joinData.meeting.waiting_room_enabled;
 
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    } catch {
-        error.value = 'Camera and microphone access is required to join this call.';
-        return;
-    }
+    // A webcam can only be opened by one app/browser at a time, so a second browser on the
+    // same machine (e.g. Firefox while Chrome already holds the camera) gets
+    // NotReadableError / NotFoundError. Degrade gracefully instead of refusing to join:
+    // camera+mic -> mic only -> camera only -> receive-only.
+    localStream = await acquireLocalMedia();
+    if (!localStream.getVideoTracks().length) cameraOn.value = false;
+    if (!localStream.getAudioTracks().length) micOn.value = false;
 
     if (localVideo.value) {
         localVideo.value.srcObject = localStream;
@@ -702,6 +710,27 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     teardown();
 });
+
+async function acquireLocalMedia(): Promise<MediaStream> {
+    const attempts: MediaStreamConstraints[] = [{ audio: true, video: true }, { audio: true }, { video: true }];
+    let permissionDenied = false;
+
+    for (const constraints of attempts) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            if (constraints.video !== true) notice.value = 'Camera not available (it may be in use by another app or browser) — you joined with audio only.';
+            else if (constraints.audio !== true) notice.value = 'Microphone not available — you joined with video only.';
+            return stream;
+        } catch (e) {
+            if (e instanceof DOMException && e.name === 'NotAllowedError') permissionDenied = true;
+        }
+    }
+
+    notice.value = permissionDenied
+        ? 'Camera/microphone permission was blocked — you joined as a viewer. Allow access in the browser address bar to share.'
+        : 'No camera or microphone available (it may be in use by another app or browser) — you joined as a viewer.';
+    return new MediaStream();
+}
 
 function toggleMic(): void {
     micOn.value = !micOn.value;
@@ -1082,7 +1111,8 @@ async function removeParticipant(peer: PeerTile): Promise<void> {
 function setPeerVideoEl(id: string, el: Element | null): void {
     const video = el as HTMLVideoElement | null;
     if (video && peers[id]?.stream) {
-        video.srcObject = peers[id].stream;
+        // see setLocalVideoEl: avoid resetting srcObject on every re-render (blinking)
+        if (video.srcObject !== peers[id].stream) video.srcObject = peers[id].stream;
         videoEls[id] = video;
     } else if (!video) {
         delete videoEls[id];

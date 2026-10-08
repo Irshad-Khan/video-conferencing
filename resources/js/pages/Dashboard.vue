@@ -31,6 +31,18 @@ async function copyCode(code: string): Promise<void> {
     }
 }
 
+async function copyLink(code: string): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(`${window.location.origin}/meeting/${code}`);
+        copiedCode.value = `link:${code}`;
+        setTimeout(() => {
+            if (copiedCode.value === `link:${code}`) copiedCode.value = '';
+        }, 1500);
+    } catch {
+        // clipboard permission denied or unsupported
+    }
+}
+
 function goToJoin(): void {
     const code = joinCode.value.trim();
     if (code) router.push(`/meeting/${code}`);
@@ -467,6 +479,14 @@ function formatDate(iso: string | null): string {
                             <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                             <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
+                        <button
+                            type="button"
+                            class="mt-1.5 ml-1.5 inline-flex items-center gap-1 rounded text-xs bg-white border border-slate-200 text-indigo-600 px-1.5 py-0.5 hover:border-indigo-300 transition-colors"
+                            title="Copy invite link — anyone can open it and join as a guest, no account needed"
+                            @click="copyLink(meeting.meeting_code)"
+                        >
+                            {{ copiedCode === `link:${meeting.meeting_code}` ? 'Link copied' : 'Copy invite link' }}
+                        </button>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
                         <button
@@ -544,6 +564,14 @@ function formatDate(iso: string | null): string {
                                         {{ meeting.meeting_code }}
                                         <svg v-if="copiedCode === meeting.meeting_code" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                                         <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="ml-0.5 inline-flex items-center gap-1 rounded text-xs bg-white border border-slate-200 text-indigo-600 px-1.5 py-0.5 hover:border-indigo-300 transition-colors"
+                                        title="Copy invite link — anyone can open it and join as a guest, no account needed"
+                                        @click="copyLink(meeting.meeting_code)"
+                                    >
+                                        {{ copiedCode === `link:${meeting.meeting_code}` ? 'Link copied' : 'Copy invite link' }}
                                     </button>
                                 </div>
                             </div>

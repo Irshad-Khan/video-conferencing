@@ -66,6 +66,20 @@ async function onLogout(): Promise<void> {
                     Log out
                 </button>
             </nav>
+            <nav v-else-if="state.checked" class="flex items-center gap-2 text-sm">
+                <router-link
+                    to="/login"
+                    class="rounded-md px-3 py-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                    Sign in
+                </router-link>
+                <router-link
+                    to="/register"
+                    class="rounded-md bg-indigo-600 px-3 py-1.5 text-white transition-colors hover:bg-indigo-500"
+                >
+                    Sign up
+                </router-link>
+            </nav>
         </header>
 
         <main class="flex-1 min-h-0" :class="route.meta.hideChrome ? 'flex flex-col' : ''">

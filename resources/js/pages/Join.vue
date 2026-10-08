@@ -29,6 +29,45 @@ const rejected = ref(false);
 
 let waitingChannel: EchoChannel | null = null;
 
+// Zoom-style pre-join: camera preview + remembered guest name. Preview is purely
+// cosmetic (the Room acquires its own stream), so any failure is silently ignored.
+const guestNameKey = 'guest_display_name';
+guestName.value = localStorage.getItem(guestNameKey) ?? '';
+const previewVideo = ref<HTMLVideoElement | null>(null);
+const previewOn = ref(true);
+const previewError = ref(false);
+let previewStream: MediaStream | null = null;
+
+async function startPreview(): Promise<void> {
+    try {
+        previewStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        previewError.value = false;
+        if (previewVideo.value) previewVideo.value.srcObject = previewStream;
+    } catch {
+        previewError.value = true;
+    }
+}
+
+function stopPreview(): void {
+    previewStream?.getTracks().forEach((track) => track.stop());
+    previewStream = null;
+}
+
+async function togglePreview(): Promise<void> {
+    previewOn.value = !previewOn.value;
+    if (previewOn.value) await startPreview();
+    else stopPreview();
+}
+
+function setPreviewEl(el: Element | null): void {
+    previewVideo.value = el as HTMLVideoElement | null;
+    if (previewVideo.value && previewStream && previewVideo.value.srcObject !== previewStream) {
+        previewVideo.value.srcObject = previewStream;
+    }
+}
+
+const guestInitial = computed(() => (guestName.value.trim()[0] ?? state.user?.name?.[0] ?? '?').toUpperCase());
+
 const isEndedOrCancelled = computed(
     () => lookup.value?.status === 'ended' || lookup.value?.status === 'cancelled',
 );
@@ -53,7 +92,10 @@ async function loadLookup(): Promise<void> {
     }
 }
 
-onMounted(loadLookup);
+onMounted(async () => {
+    await loadLookup();
+    void startPreview();
+});
 
 async function submitJoin(): Promise<void> {
     joining.value = true;
@@ -69,6 +111,8 @@ async function submitJoin(): Promise<void> {
 
         joined.value = data.data;
 
+        if (guestName.value.trim()) localStorage.setItem(guestNameKey, guestName.value.trim());
+
         if (data.data.guest_token) {
             sessionStorage.setItem(guestTokenKey, data.data.guest_token);
         }
@@ -78,6 +122,7 @@ async function submitJoin(): Promise<void> {
         } else {
             leaveWaitingChannel();
             sessionStorage.setItem(joinDataKey, JSON.stringify(data.data));
+            stopPreview();
             router.push({ name: 'room', params: { code } });
         }
     } catch (error) {
@@ -121,7 +166,10 @@ function leaveWaitingChannel(): void {
     waitingChannel = null;
 }
 
-onBeforeUnmount(leaveWaitingChannel);
+onBeforeUnmount(() => {
+    leaveWaitingChannel();
+    stopPreview();
+});
 
 async function leaveMeeting(): Promise<void> {
     leaving.value = true;
@@ -142,50 +190,84 @@ async function leaveMeeting(): Promise<void> {
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-6">
-        <div class="w-full max-w-sm space-y-6 bg-white border border-slate-200 shadow-sm rounded-2xl p-8">
-            <p v-if="loading" class="text-sm text-slate-500">Loading…</p>
+    <div class="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-slate-50 via-white to-indigo-50 text-slate-900 flex items-center justify-center px-4 py-10">
+        <p v-if="loading" class="text-sm text-slate-500">Loading…</p>
 
-            <div v-else-if="notFound" class="space-y-2">
-                <h1 class="text-xl font-semibold">Meeting not found</h1>
-                <p class="text-sm text-slate-500">Check the meeting code and try again.</p>
+        <div v-else-if="notFound" class="w-full max-w-sm bg-white border border-slate-200 shadow-sm rounded-2xl p-8 space-y-2 text-center">
+            <h1 class="text-xl font-semibold">Meeting not found</h1>
+            <p class="text-sm text-slate-500">Check the meeting code or link and try again.</p>
+            <router-link to="/" class="inline-block mt-3 text-sm text-indigo-600 hover:text-indigo-500">Go home</router-link>
+        </div>
+
+        <div v-else-if="rejected" class="w-full max-w-sm bg-white border border-slate-200 shadow-sm rounded-2xl p-8 space-y-2 text-center">
+            <h1 class="text-xl font-semibold">Not admitted</h1>
+            <p class="text-sm text-slate-500">The host did not admit you to this meeting.</p>
+        </div>
+
+        <div v-else-if="joined" class="w-full max-w-sm bg-white border border-slate-200 shadow-sm rounded-2xl p-8 space-y-5 text-center">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50">
+                <span class="h-3 w-3 rounded-full bg-indigo-500 animate-pulse"></span>
             </div>
-
-            <div v-else-if="rejected" class="space-y-2">
-                <h1 class="text-xl font-semibold">Not admitted</h1>
-                <p class="text-sm text-slate-500">The host did not admit you to this meeting.</p>
-            </div>
-
-            <div v-else-if="joined" class="space-y-4">
-                <h1 class="text-xl font-semibold">You're in</h1>
+            <div class="space-y-1">
+                <h1 class="text-xl font-semibold">
+                    {{ joined.participant.status === 'waiting' ? 'Waiting for the host' : "You're in" }}
+                </h1>
                 <p class="text-sm text-slate-500">
                     {{
                         joined.participant.status === 'waiting'
-                            ? "You're in the waiting room. The host will let you in shortly."
+                            ? 'The host will let you in shortly. Keep this page open.'
                             : `Joined "${joined.meeting.title}" as ${joined.participant.role}.`
                     }}
                 </p>
+            </div>
+            <button
+                type="button"
+                :disabled="leaving"
+                class="w-full rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors text-sm font-medium py-2.5 disabled:opacity-50"
+                @click="leaveMeeting"
+            >
+                {{ leaving ? 'Leaving…' : 'Leave meeting' }}
+            </button>
+        </div>
+
+        <div v-else-if="lookup" class="w-full max-w-4xl bg-white border border-slate-200 shadow-lg shadow-indigo-100/50 rounded-3xl overflow-hidden grid md:grid-cols-2">
+            <!-- camera preview -->
+            <div class="bg-slate-900 relative min-h-64 md:min-h-[26rem] flex items-center justify-center">
+                <video
+                    v-show="previewOn && !previewError"
+                    :ref="setPreviewEl"
+                    autoplay
+                    muted
+                    playsinline
+                    class="absolute inset-0 w-full h-full object-cover -scale-x-100"
+                ></video>
+                <div v-if="!previewOn || previewError" class="flex flex-col items-center gap-3 text-slate-400">
+                    <span class="flex h-20 w-20 items-center justify-center rounded-full bg-indigo-600 text-white text-3xl font-semibold">
+                        {{ guestInitial }}
+                    </span>
+                    <span class="text-sm">{{ previewError ? 'Camera unavailable' : 'Camera is off' }}</span>
+                </div>
                 <button
                     type="button"
-                    :disabled="leaving"
-                    class="w-full rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors text-sm font-medium py-2 disabled:opacity-50"
-                    @click="leaveMeeting"
+                    class="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-xs font-medium backdrop-blur transition-colors"
+                    :class="previewOn && !previewError ? 'bg-white/90 text-slate-800 hover:bg-white' : 'bg-red-500/90 text-white hover:bg-red-500'"
+                    @click="togglePreview"
                 >
-                    {{ leaving ? 'Leaving…' : 'Leave meeting' }}
+                    {{ previewOn ? 'Turn camera off' : 'Turn camera on' }}
                 </button>
             </div>
 
-            <div v-else-if="lookup" class="space-y-6">
+            <!-- join form -->
+            <div class="p-8 flex flex-col justify-center space-y-6">
                 <div>
-                    <h1 class="text-xl font-semibold">{{ lookup.title }}</h1>
+                    <p class="text-xs font-medium uppercase tracking-wide text-indigo-600">Ready to join?</p>
+                    <h1 class="text-2xl font-semibold mt-1">{{ lookup.title }}</h1>
                     <p class="text-sm text-slate-500 mt-1">
                         {{ isHost ? "You're the host" : `Hosted by ${lookup.host_name}` }}
                     </p>
                 </div>
 
-                <p v-if="isEndedOrCancelled" class="text-sm text-slate-500">
-                    This meeting has {{ lookup.status }}.
-                </p>
+                <p v-if="isEndedOrCancelled" class="text-sm text-slate-500">This meeting has {{ lookup.status }}.</p>
 
                 <template v-else>
                     <p v-if="lookup.is_locked && !isHost" class="text-sm text-amber-600">
@@ -201,10 +283,15 @@ async function leaveMeeting(): Promise<void> {
                                 v-model="guestName"
                                 type="text"
                                 required
-                                class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                                maxlength="100"
+                                placeholder="Enter your name to join as a guest"
+                                class="w-full rounded-lg bg-white border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                             />
                             <p v-if="errors.guest_name" class="text-sm text-red-600 mt-1">{{ errors.guest_name[0] }}</p>
                         </div>
+                        <p v-else-if="state.user" class="text-sm text-slate-600">
+                            Joining as <span class="font-medium text-slate-900">{{ state.user.name }}</span>
+                        </p>
 
                         <div v-if="lookup.has_password && !isHost">
                             <label for="password" class="block text-sm text-slate-600 mb-1">Meeting password</label>
@@ -212,7 +299,7 @@ async function leaveMeeting(): Promise<void> {
                                 id="password"
                                 v-model="password"
                                 type="password"
-                                class="w-full rounded-md bg-white border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+                                class="w-full rounded-lg bg-white border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                             />
                             <p v-if="errors.password" class="text-sm text-red-600 mt-1">{{ errors.password[0] }}</p>
                         </div>
@@ -220,17 +307,24 @@ async function leaveMeeting(): Promise<void> {
                         <button
                             type="submit"
                             :disabled="joining"
-                            class="w-full rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium py-2 disabled:opacity-50"
+                            class="w-full rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium py-2.5 shadow-sm disabled:opacity-50"
                         >
                             {{ joining ? 'Joining…' : 'Join meeting' }}
                         </button>
+
+                        <p v-if="needsGuestName" class="text-xs text-slate-500 text-center">
+                            No account needed.
+                            <router-link :to="{ name: 'login', query: { redirect: route.fullPath } }" class="text-indigo-600 hover:text-indigo-500">
+                                Sign in instead
+                            </router-link>
+                        </p>
                     </form>
 
                     <div v-else class="space-y-3">
                         <p class="text-sm text-slate-500">This meeting requires you to sign in to join.</p>
                         <router-link
                             :to="{ name: 'login', query: { redirect: route.fullPath } }"
-                            class="block w-full text-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium py-2"
+                            class="block w-full text-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium py-2.5"
                         >
                             Sign in
                         </router-link>
